@@ -1,0 +1,63 @@
+// ─── Design tokens ───────────────────────────────────────────────────────────
+
+:root {
+  --surface-primary: #ffffff;
+  --surface-secondary: #f9fafb;
+  --surface-elevated: #ffffff;
+  --surface-hover: #f3f4f6;
+  --surface-divider: #f3f4f6;
+
+  --border-default: #e5e7eb;
+  --border-hover: #d1d5db;
+  --border-strong: #9ca3af;
+
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+}
+
+.dark {
+  --surface-primary: #1f2937;
+  --surface-secondary: #111827;
+  --surface-elevated: #111827;
+  --surface-hover: #111827;
+  --surface-divider: #374151;
+
+  --border-default: #374151;
+  --border-hover: #4b5563;
+  --border-strong: #4b5563;
+
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+}
+
+// ─── Base ─────────────────────────────────────────────────────────────────────
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--surface-primary);
+  color: var(--text-primary);
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+}

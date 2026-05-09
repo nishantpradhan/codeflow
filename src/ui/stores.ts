@@ -11,7 +11,7 @@ export const graphState = writable<GraphViewState>({
   hoveredNodeId: null,
   zoom: 1,
   pan: { x: 0, y: 0 },
-  lod: 'files',
+  lod: 'modules',
   theme: 'light'
 })
 

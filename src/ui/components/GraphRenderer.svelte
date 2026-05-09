@@ -1,7 +1,8 @@
 <script lang="ts">
+  import './GraphRenderer.scss'
   import { createEventDispatcher, onMount } from 'svelte'
-  import type { GraphViewData, GraphViewState } from '../../shared/ui-types'
-  import type { NodeId } from '../../shared/types'
+  import type { GraphViewData, GraphViewState } from '../../../shared/ui-types'
+  import type { NodeId } from '../../../shared/types'
 
   export let data: GraphViewData
   export let state: GraphViewState
@@ -62,6 +63,8 @@
   onMount(async () => {
     if (!container) return
 
+    await new Promise(resolve => requestAnimationFrame(resolve))
+
     try {
       const Sigma = (await import('sigma')).default
       const Graph = (await import('graphology')).default
@@ -76,7 +79,9 @@
         defaultEdgeColor: isDark ? '#4b5563' : '#ccc',
         labelRenderedSizeThreshold: -Infinity,
         labelDensity: 1,
-        labelColor: { color: isDark ? '#f3f4f6' : '#111827' }
+        labelGridCellSize: 20,
+        labelColor: { color: isDark ? '#f3f4f6' : '#111827' },
+        allowInvalidContainer: true
       })
 
       sigma.on('clickNode', ({ node }: any) => dispatch('selectNode', node))
@@ -106,9 +111,3 @@
 
 <div class="graph-renderer" bind:this={container} />
 
-<style>
-  .graph-renderer {
-    width: 100%;
-    height: 100%;
-  }
-</style>
