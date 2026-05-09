@@ -1,0 +1,73 @@
+{
+  "name": "codeflow",
+  "version": "0.1.0",
+  "description": "Local CLI tool that reads a Node.js / JavaScript / TypeScript codebase, builds a graph of its structure and relationships, stores it in Neo4j + SQLite, and exposes it via a Query Engine",
+  "main": "dist/src/cli/index.js",
+  "bin": {
+    "codeflow": "dist/src/cli/index.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc && npm run build:ui",
+    "build:ui": "vite build",
+    "dev": "tsx src/cli/index.ts",
+    "dev:server": "tsx src/server/index.ts",
+    "dev:ui": "vite dev",
+    "dev:all": "concurrently \"npm run dev:ui\" \"npm run dev:server\"",
+    "start": "node dist/src/server/index.js",
+    "scan": "tsx src/cli/index.ts scan",
+    "watch": "tsx src/cli/index.ts watch",
+    "clean": "rm -rf dist data/codeflow.db",
+    "type-check": "tsc --noEmit",
+    "preview": "vite preview",
+    "postinstall": "chmod +x dist/src/cli/index.js || true"
+  },
+  "keywords": [
+    "codebase",
+    "graph",
+    "analysis",
+    "neo4j",
+    "sqlite",
+    "ast",
+    "tree-sitter"
+  ],
+  "author": "Nishant Pradhan",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.28.0",
+    "@ast-grep/napi": "^0.22.0",
+    "better-sqlite3": "^9.2.2",
+    "chalk": "^5.3.0",
+    "chokidar": "^3.5.3",
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "glob": "^10.3.10",
+    "graphology": "^0.25.4",
+    "neo4j-driver": "^5.16.0",
+    "ora": "^8.0.1",
+    "sigma": "^2.4.0",
+    "tree-sitter": "^0.20.2",
+    "tree-sitter-javascript": "^0.20.1",
+    "tree-sitter-typescript": "^0.20.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@sveltejs/kit": "^2.0.0",
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/chokidar": "^2.1.6",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/ws": "^8.5.10",
+    "svelte": "^4.2.0",
+    "tailwindcss": "^3.3.6",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}
