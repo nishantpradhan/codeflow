@@ -1,15 +1,15 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { resolve, relative, basename } from 'path'
-import {
+import type {
   ScanResult,
   ScannedModule,
   ScannedFolder,
   ScannedFile,
   PackageJson,
   Language,
-  CodeflowConfig,
-  DEFAULT_IGNORE
+  CodeflowConfig
 } from '../../shared/types'
+import { DEFAULT_IGNORE } from '../../shared/types'
 import { hashFile } from '../parser/hashFile'
 import { detectLanguage } from '../parser/languageDetect'
 

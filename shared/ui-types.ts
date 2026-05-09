@@ -3,7 +3,7 @@
 // Phase 2 — UI-specific types for frontend/backend communication
 // ============================================================
 
-import { GraphNode, GraphEdge, NodeId, EdgeType, SubGraph } from './types'
+import type { GraphNode, GraphEdge, NodeId, EdgeType, SubGraph } from './types'
 
 // ============================================================
 // GRAPH RENDERING (Sigma.js)

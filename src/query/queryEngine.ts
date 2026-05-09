@@ -1,4 +1,4 @@
-import {
+import type {
   GraphNode,
   GraphEdge,
   SubGraph,
@@ -224,5 +224,16 @@ export class QueryEngine {
       patternCount: patternStats.totalPatterns,
       nodeCount: 0 // Would need Neo4j query for actual count
     }
+  }
+
+  async getRootProject(depth: number = 1): Promise<SubGraph | null> {
+    const projects = await this.neo4j.getNodesByType('project')
+    if (projects.length === 0) return null
+
+    const rootNode = projects[0]
+    return this.getSubgraph({
+      nodeId: rootNode.id,
+      depth
+    }).then(result => result.data)
   }
 }

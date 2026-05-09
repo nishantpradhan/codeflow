@@ -1,5 +1,5 @@
 import neo4j, { Driver, Session } from 'neo4j-driver'
-import {
+import type {
   GraphNode,
   GraphEdge,
   ProjectNode,
@@ -8,9 +8,9 @@ import {
   FileNode,
   FunctionNode,
   NodeId,
-  EdgeType,
-  makeEdgeId
+  EdgeType
 } from '../../shared/types'
+import { makeEdgeId } from '../../shared/types'
 
 export class Neo4jDB {
   private driver: Driver
@@ -335,6 +335,19 @@ export class Neo4jDB {
     }
   }
 
+  async getNodesByType(nodeType: string): Promise<GraphNode[]> {
+    const session = this.driver.session()
+    try {
+      const result = await session.run(`MATCH (n:\`${nodeType}\`) RETURN n`)
+      return result.records.map(r => {
+        const node = r.get('n')
+        return this.propertiesToNode(node.properties, nodeType)
+      })
+    } finally {
+      await session.close()
+    }
+  }
+
   // ============================================================
   // Utility methods
   // ============================================================
@@ -408,6 +421,8 @@ export class Neo4jDB {
   }
 
   private propertiesToNode(props: Record<string, any>, nodeType: string): GraphNode {
+    const normalizedType = nodeType.charAt(0).toUpperCase() + nodeType.slice(1).toLowerCase()
+    nodeType = normalizedType
     const common = {
       id: props.id as NodeId,
       type: props.type as any,

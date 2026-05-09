@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server as HttpServer } from 'http'
-import {
+import type {
   ClientMessage,
   ServerMessage,
   SubgraphLoadedMessage,
@@ -12,7 +12,7 @@ import {
   SigmaEdge
 } from '../../shared/ui-types'
 import { QueryEngine } from '../query/queryEngine'
-import { GraphNode, NodeId, SubGraph } from '../../shared/types'
+import type { GraphNode, NodeId, SubGraph } from '../../shared/types'
 
 export class WSServer {
   private wss: WebSocketServer

@@ -13,9 +13,8 @@ import { Neo4jDB } from '../storage/neo4j'
 import { SQLiteDB } from '../storage/sqlite'
 import { QueryEngine } from '../query/queryEngine'
 import { FileWatcher } from './watcher'
-import {
-  makeNodeId,
-  makeEdgeId,
+import { makeNodeId, makeEdgeId } from '../../shared/types'
+import type {
   GraphNode,
   ProjectNode,
   ModuleNode,
@@ -438,11 +437,13 @@ async function runWatch(projectRoot: string): Promise<void> {
 // Helper Functions
 // ============================================================
 
-function getAllFiles(module: any): any[] {
-  const files: any[] = [...module.files]
+function getAllFiles(item: any): any[] {
+  const files: any[] = [...(item.files || [])]
 
-  for (const folder of module.folders) {
-    files.push(...getAllFiles(folder))
+  if (item.folders) {
+    for (const folder of item.folders) {
+      files.push(...getAllFiles(folder))
+    }
   }
 
   return files

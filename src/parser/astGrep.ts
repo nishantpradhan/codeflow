@@ -2,7 +2,7 @@ import Parser from 'tree-sitter'
 import JavaScript from 'tree-sitter-javascript'
 import TypeScript from 'tree-sitter-typescript'
 import { readFileSync } from 'fs'
-import { Language } from '../../shared/types'
+import type { Language } from '../../shared/types'
 import { detectLanguage } from './languageDetect'
 
 export interface ExtractedPattern {

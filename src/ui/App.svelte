@@ -31,10 +31,26 @@
 
   let ws: WebSocket | null = null
   let mounted = false
+  let cameraZoom: number | null = null
+  let resetCameraFlag = 0
 
-  onMount(() => {
+  onMount(async () => {
     mounted = true
     initWebSocket()
+
+    // Load root project after a short delay to ensure backend is ready
+    setTimeout(async () => {
+      try {
+        const response = await fetch('/api/graph/root')
+        const data = await response.json()
+        console.log('Root project response:', data)
+        if (data.success && data.data) {
+          updateSubgraph(data.data.sigma)
+        }
+      } catch (err) {
+        console.error('Could not auto-load root project:', err)
+      }
+    }, 1000)
   })
 
   function initWebSocket() {
@@ -117,9 +133,30 @@
     // Filter logic would go here
   }
 
-  function handleLODChange(event: CustomEvent) {
+  function handleZoomChange(event: CustomEvent) {
+    cameraZoom = event.detail
+    setZoom(event.detail, ws)
+  }
+
+  function handleResetCamera() {
+    resetCameraFlag += 1
+  }
+
+  const lodDepth: Record<string, number> = { modules: 1, files: 2, functions: 3 }
+
+  async function handleLODChange(event: CustomEvent) {
     const lod = event.detail
     setLOD(lod, ws)
+    const depth = lodDepth[lod] ?? 1
+    try {
+      const response = await fetch(`/api/graph/root?depth=${depth}`)
+      const data = await response.json()
+      if (data.success && data.data) {
+        updateSubgraph(data.data.sigma)
+      }
+    } catch (err) {
+      console.error('Failed to reload graph for LOD:', err)
+    }
   }
 
   function handleThemeChange(event: CustomEvent) {
@@ -143,14 +180,18 @@
   <main class="main-content">
     <div class="graph-container">
       {#if $currentSubgraph}
-        <GraphRenderer
-          data={$currentSubgraph}
-          state={$graphState}
-          on:selectNode={handleNodeSelect}
-          on:hoverNode={handleNodeHover}
-          on:zoom={handleZoom}
-          on:pan={handlePan}
-        />
+        {#key `${$currentSubgraph}-${$graphState.theme}`}
+          <GraphRenderer
+            data={$currentSubgraph}
+            state={$graphState}
+            cameraZoom={cameraZoom}
+            resetCameraFlag={resetCameraFlag}
+            on:selectNode={handleNodeSelect}
+            on:hoverNode={handleNodeHover}
+            on:zoom={handleZoom}
+            on:pan={handlePan}
+          />
+        {/key}
       {:else}
         <div class="empty-state">
           <p>No graph loaded. Select a node to begin.</p>
@@ -173,9 +214,8 @@
   <footer class="footer">
     <Toolbar
       state={$graphState}
-      on:zoomIn
-      on:zoomOut
-      on:resetCamera
+      on:zoomChange={handleZoomChange}
+      on:resetCamera={handleResetCamera}
       on:lodChange={handleLODChange}
       on:themeChange={handleThemeChange}
     />

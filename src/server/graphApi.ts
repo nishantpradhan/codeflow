@@ -1,7 +1,8 @@
-import { Router, Request, Response } from 'express'
+import { Router } from 'express'
+import type { Request, Response } from 'express'
 import { QueryEngine } from '../query/queryEngine'
-import { GraphViewData, SigmaNode, SigmaEdge, NodeDetailsResponse, SearchResponse } from '../../shared/ui-types'
-import { SubGraph, GraphNode } from '../../shared/types'
+import type { GraphViewData, SigmaNode, SigmaEdge, NodeDetailsResponse, SearchResponse } from '../../shared/ui-types'
+import type { SubGraph, GraphNode } from '../../shared/types'
 
 export function createGraphRouter(queryEngine: QueryEngine): Router {
   const router = Router()
@@ -292,6 +293,43 @@ export function createGraphRouter(queryEngine: QueryEngine): Router {
         error: {
           message: (error as Error).message,
           code: 'SEARCH_ERROR'
+        }
+      })
+    }
+  })
+
+  // Get root project node
+  router.get('/root', async (req: Request, res: Response) => {
+    try {
+      const depth = parseInt(req.query.depth as string) || 1
+      const result = await queryEngine.getRootProject(depth)
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          error: {
+            message: 'No project node found',
+            code: 'NO_PROJECT'
+          }
+        })
+      }
+
+      const sigma = convertToSigma(result)
+      res.json({
+        success: true,
+        data: {
+          subgraph: result,
+          sigma,
+          nodeDetails: Object.fromEntries(
+            result.nodes.map(node => [node.id, node])
+          )
+        }
+      })
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        error: {
+          message: (error as Error).message,
+          code: 'ROOT_ERROR'
         }
       })
     }

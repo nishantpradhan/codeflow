@@ -1,7 +1,12 @@
 import Database from 'better-sqlite3'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
-import { ParsedFile, CacheRecord, NodeId } from '../../shared/types'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
+import type { ParsedFile, CacheRecord, NodeId } from '../../shared/types'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 export class SQLiteDB {
   private db: Database.Database

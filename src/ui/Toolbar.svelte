@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-  import type { GraphViewState } from '../shared/ui-types'
+  import type { GraphViewState } from '../../shared/ui-types'
 
   export let state: GraphViewState
 
@@ -30,28 +30,27 @@
 
 <div class="toolbar">
   <div class="tool-group">
-    <label for="zoom-level">Zoom: {Math.round(state.zoom * 100)}%</label>
+    <label for="zoom-level">Zoom: {Math.min(100, Math.round(state.zoom * 100))}%</label>
     <input
       id="zoom-level"
       type="range"
       min="0.1"
-      max="5"
-      step="0.1"
-      value={state.zoom}
+      max="1"
+      step="0.05"
+      value={Math.min(1, state.zoom)}
       on:input={e => dispatch('zoomChange', parseFloat(e.currentTarget.value))}
       class="slider"
     />
   </div>
 
   <div class="tool-group">
-    <span>LOD:</span>
     {#each ['modules', 'files', 'functions'] as lod}
       <button
         class="lod-btn"
         class:active={state.lod === lod}
         on:click={() => changeLOD(lod)}
       >
-        {lod.charAt(0).toUpperCase()}
+        {lod.charAt(0).toUpperCase() + lod.slice(1)}
       </button>
     {/each}
   </div>
@@ -141,15 +140,16 @@
   }
 
   .lod-btn {
-    width: 32px;
     height: 32px;
+    padding: 0 0.75rem;
     border-radius: 0.375rem;
     border: 1px solid #d1d5db;
     background: white;
     color: #6b7280;
     cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
     transition: all 0.2s;
   }
 

@@ -13,10 +13,7 @@
     "resolveJsonModule": true,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
+    "verbatimModuleSyntax": true
   },
   "include": ["src/**/*", "shared/**/*"],
   "exclude": ["node_modules", "dist", "data"]

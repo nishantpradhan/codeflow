@@ -1,5 +1,5 @@
 import { extname } from 'path'
-import { Language } from '../../shared/types'
+import type { Language } from '../../shared/types'
 
 export function detectLanguage(filePath: string): Language {
   const ext = extname(filePath).toLowerCase()

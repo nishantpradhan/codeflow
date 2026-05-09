@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-  import type { GraphNode } from '../shared/types'
+  import type { GraphNode } from '../../shared/types'
 
   export let node: GraphNode
   export let neighbors: { incoming: GraphNode[]; outgoing: GraphNode[] }
@@ -32,6 +32,12 @@
     }
     return colors[type] || '#9ca3af'
   }
+
+  $: lineCount = 'lineCount' in node ? (node as any).lineCount : undefined
+  $: fileCount = 'fileCount' in node ? (node as any).fileCount : undefined
+  $: isExported = 'isExported' in node ? (node as any).isExported : false
+  $: isAsync = 'isAsync' in node ? (node as any).isAsync : false
+  $: isMethod = 'isMethod' in node ? (node as any).isMethod : false
 </script>
 
 <div class="node-panel">
@@ -54,38 +60,38 @@
         <span class="value">{node.path}</span>
       </div>
 
-      {#if 'lineCount' in node}
+      {#if lineCount !== undefined}
         <div class="detail-row">
           <span class="label">Lines:</span>
-          <span class="value">{(node as any).lineCount}</span>
+          <span class="value">{lineCount}</span>
         </div>
       {/if}
 
-      {#if 'fileCount' in node}
+      {#if fileCount !== undefined}
         <div class="detail-row">
           <span class="label">Files:</span>
-          <span class="value">{(node as any).fileCount}</span>
+          <span class="value">{fileCount}</span>
         </div>
       {/if}
 
       {#if 'isExported' in node}
         <div class="detail-row">
           <span class="label">Exported:</span>
-          <span class="value">{(node as any).isExported ? '✓' : '✗'}</span>
+          <span class="value">{isExported ? '✓' : '✗'}</span>
         </div>
       {/if}
 
       {#if 'isAsync' in node}
         <div class="detail-row">
           <span class="label">Async:</span>
-          <span class="value">{(node as any).isAsync ? '✓' : '✗'}</span>
+          <span class="value">{isAsync ? '✓' : '✗'}</span>
         </div>
       {/if}
 
       {#if 'isMethod' in node}
         <div class="detail-row">
           <span class="label">Method:</span>
-          <span class="value">{(node as any).isMethod ? '✓' : '✗'}</span>
+          <span class="value">{isMethod ? '✓' : '✗'}</span>
         </div>
       {/if}
     </div>
