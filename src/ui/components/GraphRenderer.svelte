@@ -13,11 +13,15 @@
 
   let container: HTMLDivElement
   let sigma: any = null
+  let initialCameraState: any = null
+
+  const outerTypes = new Set(['file', 'function'])
+  const outerNodes = new Set<string>()
+  const hoverState = { key: null as string | null }
 
   function buildGraph(GraphClass: any, nodes: any[], edges: any[]) {
-    const graph = new GraphClass()
+    const g = new GraphClass()
 
-    // Group nodes by type to spread them in concentric rings
     const byType: Record<string, any[]> = {}
     for (const node of nodes) {
       if (!byType[node.type]) byType[node.type] = []
@@ -27,13 +31,16 @@
     const radii: Record<string, number> = { project: 0, module: 150, folder: 300, file: 450, function: 600 }
 
     for (const node of nodes) {
-      if (graph.hasNode(node.key)) continue
+      if (g.hasNode(node.key)) continue
       const group = byType[node.type]
       const idx = group.indexOf(node)
       const total = group.length
       const radius = radii[node.type] ?? 300
       const angle = total > 1 ? (2 * Math.PI * idx) / total : 0
-      graph.addNode(node.key, {
+
+      if (outerTypes.has(node.type)) outerNodes.add(node.key)
+
+      g.addNode(node.key, {
         label: node.label,
         size: node.size,
         color: node.color,
@@ -47,23 +54,21 @@
 
     for (const edge of edges) {
       try {
-        if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue
-        graph.addEdge(edge.source, edge.target, {
-          size: 1,
-          color: edgeColor
-        })
+        if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) continue
+        g.addEdge(edge.source, edge.target, { size: 1, color: edgeColor })
       } catch (_) {
         // skip duplicate edges
       }
     }
 
-    return graph
+    return g
   }
 
   onMount(async () => {
     if (!container) return
 
     await new Promise(resolve => requestAnimationFrame(resolve))
+    if (!container) return
 
     try {
       const Sigma = (await import('sigma')).default
@@ -78,36 +83,50 @@
         defaultNodeColor: '#999',
         defaultEdgeColor: isDark ? '#4b5563' : '#ccc',
         labelRenderedSizeThreshold: -Infinity,
-        labelDensity: 1,
-        labelGridCellSize: 20,
-        labelColor: { color: isDark ? '#f3f4f6' : '#111827' },
-        allowInvalidContainer: true
+        labelSize: 12,
+        labelWeight: 'normal',
+        labelColor: { color: isDark ? '#f3f4f6' : '#000000' },
+        allowInvalidContainer: true,
+        nodeReducer: (node: string, data: any) => {
+          return { ...data, forceLabel: true }
+        }
       })
 
+      initialCameraState = { ...sigma.getCamera().getState() }
+
       sigma.on('clickNode', ({ node }: any) => dispatch('selectNode', node))
-      sigma.on('enterNode', ({ node }: any) => dispatch('hoverNode', node))
-      sigma.on('leaveNode', () => dispatch('hoverNode', null))
+      sigma.on('enterNode', ({ node }: any) => {
+        hoverState.key = node
+        sigma.refresh()
+        dispatch('hoverNode', node)
+      })
+      sigma.on('leaveNode', () => {
+        hoverState.key = null
+        sigma.refresh()
+        dispatch('hoverNode', null)
+      })
+
+      let cameraDebounce: ReturnType<typeof setTimeout> | null = null
       sigma.getCamera().on('updated', () => {
-        const camera = sigma.getCamera()
-        const zoom = Math.min(1, 1 / camera.ratio)
-        dispatch('zoom', zoom)
-        dispatch('pan', { x: camera.x, y: camera.y })
+        if (cameraDebounce) clearTimeout(cameraDebounce)
+        cameraDebounce = setTimeout(() => {
+          const camera = sigma.getCamera()
+          dispatch('zoom', Math.min(1, 1 / camera.ratio))
+          dispatch('pan', { x: camera.x, y: camera.y })
+        }, 100)
       })
     } catch (error) {
       console.error('Failed to initialize Sigma:', error)
     }
   })
 
-  // React to zoom slider changes — Sigma ratio is inverse of zoom
   $: if (sigma && cameraZoom !== null) {
     sigma.getCamera().setState({ ratio: 1 / cameraZoom })
   }
 
-  // React to reset camera button
-  $: if (sigma && resetCameraFlag > 0) {
-    sigma.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 })
+  $: if (sigma && initialCameraState && resetCameraFlag > 0) {
+    sigma.getCamera().animate(initialCameraState, { duration: 300 })
   }
 </script>
 
 <div class="graph-renderer" bind:this={container} />
-

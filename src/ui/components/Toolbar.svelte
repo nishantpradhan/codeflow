@@ -42,6 +42,9 @@
       on:input={e => dispatch('zoomChange', parseFloat(e.currentTarget.value))}
       class="slider"
     />
+    <button class="icon-btn" on:click={resetCamera} title="Reset camera">
+      🎯
+    </button>
   </div>
 
   <div class="tool-group">
@@ -54,12 +57,6 @@
         {lod.charAt(0).toUpperCase() + lod.slice(1)}
       </button>
     {/each}
-  </div>
-
-  <div class="tool-group">
-    <button class="icon-btn" on:click={resetCamera} title="Reset camera">
-      🎯
-    </button>
   </div>
 
   <div class="tool-group">

@@ -384,11 +384,11 @@ function getNodeColor(type: string): string {
 
 function getNodeSize(type: string): number {
   const sizes: Record<string, number> = {
-    project: 30,
-    module: 25,
-    folder: 20,
-    file: 15,
-    function: 10
+    project: 10,
+    module: 8,
+    folder: 6,
+    file: 5,
+    function: 4
   }
-  return sizes[type] || 12
+  return sizes[type] || 5
 }

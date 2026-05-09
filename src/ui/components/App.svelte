@@ -23,12 +23,10 @@
     setLOD,
     setTheme,
     loadSubgraph,
-    search,
     clearSelectedNode
   } from '../stores'
   import GraphRenderer from './GraphRenderer.svelte'
   import NodePanel from './NodePanel.svelte'
-  import SearchBar from './SearchBar.svelte'
   import Toolbar from './Toolbar.svelte'
 
   let ws: WebSocket | null = null
@@ -125,16 +123,6 @@
     setPan(x, y, ws)
   }
 
-  function handleSearch(event: CustomEvent) {
-    const query = event.detail
-    search(query, ws)
-  }
-
-  function handleFilter(event: CustomEvent) {
-    const options = event.detail
-    // Filter logic would go here
-  }
-
   function handleZoomChange(event: CustomEvent) {
     cameraZoom = event.detail
     setZoom(event.detail, ws)
@@ -175,7 +163,6 @@
   <header class="header">
     <div class="header-content">
       <h1>Codeflow</h1>
-      <SearchBar on:search={handleSearch} on:filter={handleFilter} />
     </div>
   </header>
 

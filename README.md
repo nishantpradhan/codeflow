@@ -1,65 +1,87 @@
 # Codeflow
 
-A local CLI tool that reads a Node.js / JavaScript / TypeScript codebase, builds a graph of its structure and relationships, stores it in Neo4j + SQLite, and exposes it via a Query Engine.
+A local CLI tool that reads a Node.js / JavaScript / TypeScript codebase, builds a relationship graph, stores it in Neo4j + SQLite, and visualises it in a WebGL UI.
 
-## Architecture
+## Phases
 
-Codeflow is built in three phases:
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Parsing, storage, query engine | ✅ Complete |
+| 2 | Svelte UI, Sigma.js graph, WebSocket | ✅ Complete |
+| 3 | Claude AI integration, natural language search | 🔜 Next |
 
-### Phase 1 — Foundation (✅ COMPLETE)
-- File scanning with intelligent ignore patterns
-- AST parsing with tree-sitter (JavaScript & TypeScript)
-- Pattern extraction with ast-grep
-- SQLite caching for fast rebuilds
-- Neo4j graph storage with 5 node types and 4 edge types
-- Query Engine for graph traversal
-- File watcher for incremental updates
+## Prerequisites
 
-### Phase 2 — Visualization (IN PROGRESS)
-- WebGL graph rendering with Sigma.js
-- Svelte UI with interactive exploration
-- Real-time updates via WebSocket
-- Search and filtering
-- Level-of-Detail (LOD) rendering
+- **Node.js** 20+
+- **Neo4j** running locally on `bolt://localhost:7687`
 
-### Phase 3 — AI Integration (Not Started)
-- Claude API integration for natural language search
-- Context builder for token-efficient prompts
-- Code understanding enrichment layer
+> Install Neo4j Desktop from https://neo4j.com/download or via Homebrew:
+> ```bash
+> brew install neo4j
+> neo4j start
+> ```
 
-## Quick Start
+## Setup
 
-### Prerequisites
-- Node.js 20+
-- Neo4j running locally (or update `.env` with remote URL)
-- SQLite (built-in)
-
-### Installation
 ```bash
+# 1. Install dependencies
 npm install
+
+# 2. Copy env file and set Neo4j credentials
+cp .env.example .env
+
+# 3. Build (optional — only needed for production)
 npm run build
 ```
 
-### Usage
+## Workflow
 
-#### Scan a project
+### Step 1 — Scan a codebase
+
+Point Codeflow at any Node.js / TypeScript project to populate the graph:
+
 ```bash
-npm run scan ~/path/to/project
+npm run scan ~/path/to/your/project
 ```
 
-#### Watch for changes
+Options:
 ```bash
-npm run scan ~/path/to/project -- --watch
+npm run scan ~/path/to/project -- --watch   # scan + watch for changes
+npm run watch ~/path/to/project             # watch only (no initial scan)
 ```
 
-#### Just watch (no initial scan)
+### Step 2 — Start the servers
+
 ```bash
-npm run watch ~/path/to/project
+# Both together (recommended)
+npm run dev:all
+
+# Or separately
+npm run dev:server   # Express + WebSocket on :5174
+npm run dev:ui       # Vite dev server on :5173
 ```
 
-### Configuration
+Then open **http://localhost:5173** in your browser.
 
-Create `codeflow.config.json` in your project root:
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run scan <path>` | Scan a project and build the graph |
+| `npm run watch <path>` | Watch a project for file changes |
+| `npm run dev:all` | Start UI + server together |
+| `npm run dev:server` | Start backend only |
+| `npm run dev:ui` | Start frontend only |
+| `npm run lint` | Run ESLint on all TS and Svelte files |
+| `npm run lint:fix` | Auto-fix lint issues |
+| `npm run type-check` | TypeScript type check without emitting |
+| `npm run build` | Production build |
+| `npm run clean` | Remove dist and SQLite database |
+
+## Configuration
+
+`codeflow.config.json` in your project root (optional):
+
 ```json
 {
   "root": "./src",
@@ -69,35 +91,18 @@ Create `codeflow.config.json` in your project root:
 }
 ```
 
-### Environment
+## Environment
 
-Copy `.env.example` to `.env` and update with your Neo4j credentials:
 ```bash
 NEO4J_URL=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=password
+SQLITE_PATH=./data/codeflow.db
 ```
 
-## Development
+## Architecture
 
-### Type checking
-```bash
-npm run type-check
-```
-
-### Clean up
-```bash
-npm run clean
-```
-
-## Architecture Files
-
-See `CLAUDE.md` for complete architecture documentation, including:
-- ID generation strategy (deterministic, never UUID)
-- Node and edge types
-- Database schemas (Neo4j and SQLite)
-- Query Engine API
-- Phase 2 and Phase 3 design
+See `CLAUDE.md` for full architecture documentation: ID strategy, node/edge types, database schemas, Query Engine API, and phase design.
 
 ## License
 
