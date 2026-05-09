@@ -1,4 +1,4 @@
-import { writable, readable, derived } from 'svelte/store'
+import { writable, derived, get } from 'svelte/store'
 import type { GraphViewState, GraphViewData, NodeDetailsPanel, SearchResult, AppStore } from '../../shared/ui-types'
 import type { NodeId } from '../../shared/types'
 
@@ -226,39 +226,12 @@ export function setLoading(loading: boolean): void {
 // ============================================================
 
 export function getStore(): Readonly<AppStore> {
-  let state: AppStore | undefined = undefined
-  const unsubscribe = (
-    graphState as any
-  ).subscribe((value: GraphViewState) => {
-    state = state || ({} as AppStore)
-    state.graphState = value
-  })
-
-  ;(currentSubgraph as any).subscribe((value: GraphViewData | null) => {
-    state = state || ({} as AppStore)
-    state.currentSubgraph = value
-  })
-
-  ;(selectedNodeDetails as any).subscribe((value: NodeDetailsPanel | null) => {
-    state = state || ({} as AppStore)
-    state.selectedNodeDetails = value
-  })
-
-  ;(searchResults as any).subscribe((value: SearchResult[]) => {
-    state = state || ({} as AppStore)
-    state.searchResults = value
-  })
-
-  ;(isLoading as any).subscribe((value: boolean) => {
-    state = state || ({} as AppStore)
-    state.isLoading = value
-  })
-
-  ;(error as any).subscribe((value: string | null) => {
-    state = state || ({} as AppStore)
-    state.error = value
-  })
-
-  unsubscribe()
-  return state || ({} as AppStore)
+  return {
+    graphState: get(graphState),
+    currentSubgraph: get(currentSubgraph),
+    selectedNodeDetails: get(selectedNodeDetails),
+    searchResults: get(searchResults),
+    isLoading: get(isLoading),
+    error: get(error)
+  }
 }
