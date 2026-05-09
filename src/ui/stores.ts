@@ -19,6 +19,8 @@ export const selectedNodeDetails = writable<NodeDetailsPanel | null>(null)
 
 export const currentSubgraph = writable<GraphViewData | null>(null)
 
+export const graphVersion = writable(0)
+
 export const searchResults = writable<SearchResult[]>([])
 
 export const isLoading = writable(false)
@@ -189,6 +191,7 @@ export function clearError(): void {
 
 export function updateSubgraph(data: GraphViewData): void {
   currentSubgraph.set(data)
+  graphVersion.update(v => v + 1)
   isLoading.set(false)
 }
 

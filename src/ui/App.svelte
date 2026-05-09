@@ -6,6 +6,7 @@
     graphState,
     selectedNodeDetails,
     currentSubgraph,
+    graphVersion,
     error,
     isLoading,
     setWsConnected,
@@ -180,7 +181,7 @@
   <main class="main-content">
     <div class="graph-container">
       {#if $currentSubgraph}
-        {#key `${$currentSubgraph}-${$graphState.theme}`}
+        {#key `${$graphVersion}-${$graphState.theme}`}
           <GraphRenderer
             data={$currentSubgraph}
             state={$graphState}

@@ -205,26 +205,33 @@ export class Neo4jDB {
   ): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
     const session = this.driver.session()
     try {
-      const result = await session.run(
+      const nodeResult = await session.run(
         `MATCH (root { id: $nodeId })-[*0..${depth}]-(n)
          RETURN DISTINCT n`,
         { nodeId }
       )
 
-      const nodes = result.records.map(r => {
+      const nodes = nodeResult.records.map(r => {
         const node = r.get('n')
         return this.propertiesToNode(node.properties, node.labels[0])
       })
 
+      // Only return edges where both endpoints are within the subgraph
       const edgeResult = await session.run(
-        `MATCH (root { id: $nodeId })-[*0..${depth}]-(n1)-[r]-(n2)
+        `MATCH (root { id: $nodeId })-[*0..${depth}]-(n)
+         WITH collect(DISTINCT n) as subgraphNodes
+         UNWIND subgraphNodes as n1
+         MATCH (n1)-[r]->(n2)
+         WHERE n2 IN subgraphNodes
          RETURN DISTINCT r, n1, n2`,
         { nodeId }
       )
 
       const edges = edgeResult.records.map(r => {
         const rel = r.get('r')
-        return this.relationshipToEdge(rel)
+        const n1 = r.get('n1')
+        const n2 = r.get('n2')
+        return this.relationshipToEdge(rel, n1.properties.id, n2.properties.id)
       })
 
       return { nodes, edges }
@@ -281,14 +288,20 @@ export class Neo4jDB {
       })
 
       const edgeResult = await session.run(
-        `MATCH (fn { id: $fnId })-[:CALLS*0..${depth}]-(n1)-[r:CALLS]->(n2)
+        `MATCH (fn { id: $fnId })-[:CALLS*0..${depth}]-(n)
+         WITH collect(DISTINCT n) as subgraphNodes
+         UNWIND subgraphNodes as n1
+         MATCH (n1)-[r:CALLS]->(n2)
+         WHERE n2 IN subgraphNodes
          RETURN DISTINCT r, n1, n2`,
         { fnId: functionId }
       )
 
       const edges = edgeResult.records.map(r => {
         const rel = r.get('r')
-        return this.relationshipToEdge(rel)
+        const n1 = r.get('n1')
+        const n2 = r.get('n2')
+        return this.relationshipToEdge(rel, n1.properties.id, n2.properties.id)
       })
 
       return { nodes, edges }
@@ -495,11 +508,13 @@ export class Neo4jDB {
     }
   }
 
-  private relationshipToEdge(rel: any): GraphEdge {
+  private relationshipToEdge(rel: any, sourceId?: string, targetId?: string): GraphEdge {
+    const source = (sourceId || rel.properties.sourceId || String(rel.start)) as NodeId
+    const target = (targetId || rel.properties.targetId || String(rel.end)) as NodeId
     return {
-      id: rel.properties.id || makeEdgeId(rel.start, rel.type, rel.end),
-      source: rel.start as NodeId,
-      target: rel.end as NodeId,
+      id: rel.properties.id || makeEdgeId(source, rel.type, target),
+      source,
+      target,
       type: rel.type as EdgeType,
       label: rel.properties.label || rel.type,
       weight: rel.properties.weight || 1,
