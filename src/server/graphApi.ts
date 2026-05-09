@@ -342,9 +342,47 @@ export function createGraphRouter(queryEngine: QueryEngine): Router {
 // Helper Functions
 // ============================================================
 
+// Color palette for nodes
+const COLOR_PALETTE = {
+  project: '#3b82f6',      // blue
+  module: '#06b6d4',       // cyan
+  folder: '#8b5cf6',       // purple
+  fileDefault: '#10b981',  // green
+  function: '#f59e0b',     // orange
+  fallback: '#9ca3af',     // gray
+  // Folder-based file colors (cycled based on hash)
+  folderColors: [
+    '#ff6b6b',  // red
+    '#4ecdc4',  // teal
+    '#45b7d1',  // blue
+    '#f9ca24',  // yellow
+    '#6c5ce7',  // purple
+    '#a29bfe',  // lavender
+    '#fd79a8',  // pink
+    '#fdcb6e',  // orange
+    '#55efc4',  // mint
+    '#74b9ff'   // sky blue
+  ]
+}
+
+function hashStringToColor(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % COLOR_PALETTE.folderColors.length
+  return COLOR_PALETTE.folderColors[index]
+}
+
+function extractFolderPath(nodeId: string): string {
+  const pathPart = nodeId.split(':')[0]
+  const parts = pathPart.split('/')
+  return parts.slice(0, -1).join('/')
+}
+
 function convertToSigma(subgraph: SubGraph): GraphViewData {
   const nodes: SigmaNode[] = subgraph.nodes.map(node => {
-    const color = getNodeColor(node.type)
+    const color = getNodeColor(node.type, node.id)
     const size = getNodeSize(node.type)
 
     return {
@@ -371,15 +409,21 @@ function convertToSigma(subgraph: SubGraph): GraphViewData {
   }
 }
 
-function getNodeColor(type: string): string {
-  const colors: Record<string, string> = {
-    project: '#3b82f6',
-    module: '#06b6d4',
-    folder: '#8b5cf6',
-    file: '#10b981',
-    function: '#f59e0b'
+function getNodeColor(type: string, nodeId?: string): string {
+  if (type === 'file' && nodeId) {
+    const folderPath = extractFolderPath(nodeId)
+    return hashStringToColor(folderPath)
   }
-  return colors[type] || '#9ca3af'
+
+  const typeColorMap: Record<string, string> = {
+    project: COLOR_PALETTE.project,
+    module: COLOR_PALETTE.module,
+    folder: COLOR_PALETTE.folder,
+    file: COLOR_PALETTE.fileDefault,
+    function: COLOR_PALETTE.function
+  }
+
+  return typeColorMap[type] || COLOR_PALETTE.fallback
 }
 
 function getNodeSize(type: string): number {

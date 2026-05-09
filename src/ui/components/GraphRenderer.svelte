@@ -35,8 +35,19 @@
       const group = byType[node.type]
       const idx = group.indexOf(node)
       const total = group.length
-      const radius = radii[node.type] ?? 300
+      const baseRadius = radii[node.type] ?? 300
       const angle = total > 1 ? (2 * Math.PI * idx) / total : 0
+
+      // Only alternate nodes if type has many nodes (5+) to avoid clutter
+      const minNodesForAlternation = 5
+      const shouldAlternate = total >= minNodesForAlternation
+      let radius = baseRadius
+
+      if (shouldAlternate) {
+        const isOuter = idx % 2 === 0
+        const radiusVariation = baseRadius * 0.15
+        radius = isOuter ? baseRadius + radiusVariation : baseRadius - radiusVariation
+      }
 
       if (outerTypes.has(node.type)) outerNodes.add(node.key)
 
