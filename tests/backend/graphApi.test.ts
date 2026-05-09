@@ -351,7 +351,9 @@ describe('Graph API', () => {
     })
 
     describe('node colors', () => {
-      it.each(nodeTypes)('assigns correct color to %s nodes', async type => {
+      const nonFileTypes = nodeTypes.filter(t => t !== 'file')
+
+      it.each(nonFileTypes)('assigns correct color to %s nodes', async type => {
         mockEngine.getSubgraph.mockResolvedValue({
           data: makeSubgraph('root', [makeNode('root', type)]),
           fromCache: false,
@@ -361,6 +363,21 @@ describe('Graph API', () => {
         const res = await request(app).get('/api/graph/subgraph/root')
 
         expect(res.body.data.sigma.nodes[0].color).toBe(expectedColors[type])
+      })
+
+      it('assigns folder-based color to file nodes', async () => {
+        mockEngine.getSubgraph.mockResolvedValue({
+          data: makeSubgraph('src/auth/user.ts', [makeNode('src/auth/user.ts', 'file', 'user.ts')]),
+          fromCache: false,
+          durationMs: 1
+        })
+
+        const res = await request(app).get('/api/graph/subgraph/src%2Fauth%2Fuser.ts')
+
+        const color = res.body.data.sigma.nodes[0].color
+        // File colors come from folderColors palette (hex colors starting with #)
+        expect(color).toMatch(/^#[0-9a-f]{6}$/i)
+        expect(color).not.toBe(expectedColors.file) // Should not be default file color
       })
 
       it('assigns fallback color to unknown node type', async () => {
