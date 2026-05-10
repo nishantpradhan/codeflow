@@ -1,0 +1,36 @@
+services:
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "4174:5174"
+    environment:
+      NEO4J_URL: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password
+      SQLITE_PATH: /app/data/codeflow.db
+    volumes:
+      - .:/app
+      - /app/node_modules          # use container's node_modules, not host's
+      - ${TARGET_PATH:-./}:/target:ro
+    command: sh -c "npm run build:ui && npm run scan -- /target --no-watch && npx tsx src/server/index.ts"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+volumes:
+  neo4j_data:

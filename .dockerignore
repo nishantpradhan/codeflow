@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+.env
+.git
+.husky
+tests
+*.md
+package-lock.json
