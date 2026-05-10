@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander'
-import { resolve } from 'path'
+import { resolve, relative, dirname } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import chalk from 'chalk'
 import ora from 'ora'
@@ -104,11 +104,15 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     let parsedCount = 0
     let functionCount = 0
 
+    // Map of relative file path → parsed data, built during parse
+    const parsedCache = new Map<string, ReturnType<typeof parseFile>>()
+
     for (const file of scanResult.rootFiles) {
       const filePath = resolve(projectRoot, file.path)
       if (existsSync(filePath)) {
         const parsed = parseFile(filePath)
         sqlite.storeASTCache(parsed)
+        parsedCache.set(file.path, parsed)
         functionCount += parsed.functions.length
         parsedCount++
       }
@@ -120,6 +124,7 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
         if (existsSync(filePath)) {
           const parsed = parseFile(filePath)
           sqlite.storeASTCache(parsed)
+          parsedCache.set(file.path, parsed)
 
           functionCount += parsed.functions.length
           parsedCount++
@@ -168,10 +173,14 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     await neo4j.createNode(projectNode)
     nodeCount++
 
+    // Registry used for the IMPORTS second pass
+    const fileRegistry: Array<{ filePath: string; fileId: string; importSources: string[] }> = []
+
     // Create file nodes for files directly in scanRoot (e.g. src/index.js)
     for (const file of scanResult.rootFiles) {
       const fileId = makeNodeId(file.path, 'file')
-      const parsed = sqlite.getASTCache(file.path)
+      const parsed = parsedCache.get(file.path) ?? null
+      fileRegistry.push({ filePath: file.path, fileId, importSources: parsedCache.get(file.path)?.imports.map(i => i.source) ?? [] })
       const fileNode: FileNode = {
         id: fileId,
         type: 'file',
@@ -275,7 +284,8 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
         // Create file nodes
         for (const file of folder.files) {
           const fileId = makeNodeId(file.path, 'file')
-          const parsed = sqlite.getASTCache(file.path)
+          const parsed = parsedCache.get(file.path) ?? null
+          fileRegistry.push({ filePath: file.path, fileId, importSources: parsedCache.get(file.path)?.imports.map(i => i.source) ?? [] })
           const fileNode: FileNode = {
             id: fileId,
             type: 'file',
@@ -379,7 +389,8 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
       // Process files directly in module
       for (const file of module.files) {
         const fileId = makeNodeId(file.path, 'file')
-        const parsed = sqlite.getASTCache(file.path)
+        const parsed = parsedCache.get(file.path) ?? null
+        fileRegistry.push({ filePath: file.path, fileId, importSources: parsedCache.get(file.path)?.imports.map(i => i.source) ?? [] })
         const fileNode: FileNode = {
           id: fileId,
           type: 'file',
@@ -418,6 +429,43 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     }
 
     spinner.succeed(chalk.green(`✓ Created ${nodeCount} nodes and ${edgeCount} edges`))
+
+    // Second pass: create IMPORTS edges between file nodes
+    spinner = ora('Building import graph...').start()
+    let importEdgeCount = 0
+
+    // Build lookup: path (with and without extension) → fileId
+    const pathIndex = new Map<string, string>()
+    for (const { filePath, fileId } of fileRegistry) {
+      pathIndex.set(filePath, fileId)
+      pathIndex.set(filePath.replace(/\.(ts|tsx|js|jsx|mjs|cjs)$/, ''), fileId)
+    }
+
+    for (const { filePath, fileId: sourceId, importSources } of fileRegistry) {
+      const fileDir = dirname(resolve(projectRoot, filePath))
+      for (const src of importSources) {
+        if (!src.startsWith('.')) continue // skip npm packages
+        const abs = resolve(fileDir, src)
+        const rel = relative(projectRoot, abs)
+        const candidates = [rel, `${rel}.ts`, `${rel}.tsx`, `${rel}.js`, `${rel}.jsx`, `${rel}/index.ts`, `${rel}/index.js`]
+        const targetId = candidates.map(c => pathIndex.get(c)).find(Boolean)
+        if (targetId && targetId !== sourceId) {
+          try {
+            await neo4j.createEdge({
+              id: makeEdgeId(sourceId, 'IMPORTS', targetId),
+              source: sourceId,
+              target: targetId,
+              type: 'IMPORTS',
+              label: 'imports',
+              weight: 1,
+              createdAt: new Date()
+            })
+            importEdgeCount++
+          } catch { /* duplicate */ }
+        }
+      }
+    }
+    spinner.succeed(chalk.green(`✓ Created ${importEdgeCount} import edges`))
 
     const duration = Date.now() - startTime
     const summary: CLISummary = {
