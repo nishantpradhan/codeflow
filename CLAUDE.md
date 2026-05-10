@@ -325,6 +325,14 @@ Frontend (`src/ui/components/NodePanel.svelte`):
 - Module/folder nodes don't have direct IMPORTS — only files do
 - Code preview requires source file access (skips silently if file not found)
 
+### UI Layout Rules — Do Not Change
+
+Critical CSS rules that must not be touched:
+
+- **`.main-content` must keep `display: flex`** — removing it causes the Sigma.js graph container to disappear entirely. The graph canvas relies on flex sizing to fill its parent.
+- **`.app` is a flex row** (not column) — `.app-main` (header + graph + footer) and `.node-panel-container` are siblings so the panel border spans full viewport height.
+- **`.node-panel-container` has `height: 100vh`** — this makes the left border line run from the very top to the bottom of the screen.
+
 ### Phase 3 Exit Criteria
 
 Do not ship until ALL of these pass:
