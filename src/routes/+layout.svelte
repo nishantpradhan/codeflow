@@ -7,11 +7,13 @@
   <title>Codeflow</title>
 </svelte:head>
 
-<App />
+<div class="layout-root">
+  <App />
+</div>
 
-<style global>
-  :global(body) {
-    margin: 0;
-    padding: 0;
+<style>
+  .layout-root {
+    height: 100%;
+    width: 100%;
   }
 </style>

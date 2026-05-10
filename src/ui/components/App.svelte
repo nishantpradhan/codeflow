@@ -23,7 +23,8 @@
     setLOD,
     setTheme,
     loadSubgraph,
-    clearSelectedNode
+    clearSelectedNode,
+    updateNodeDetails
   } from '../stores'
   import GraphRenderer from './GraphRenderer.svelte'
   import NodePanel from './NodePanel.svelte'
@@ -33,6 +34,7 @@
   let mounted = false
   let cameraZoom: number | null = null
   let resetCameraFlag = 0
+  let projectName = 'Codeflow'
 
   onMount(async () => {
     mounted = true
@@ -41,7 +43,8 @@
     // Load root project after a short delay to ensure backend is ready
     setTimeout(async () => {
       try {
-        const response = await fetch('/api/graph/root?depth=1')
+        // Always load depth=2 to include entry point files
+        const response = await fetch('/api/graph/root?depth=2')
         const data = await response.json()
         console.log('Root project response:', data)
         if (data.success && data.data) {
@@ -102,10 +105,28 @@
     }
   }
 
-  function handleNodeSelect(event: CustomEvent) {
+  async function handleNodeSelect(event: CustomEvent) {
     const nodeId = event.detail
     selectNode(nodeId, ws)
     loadSubgraph(nodeId, 2, ws)
+
+    try {
+      const res = await fetch(`/api/graph/node/${encodeURIComponent(nodeId)}`)
+      const data = await res.json()
+      if (data.success && data.data) {
+        updateNodeDetails({
+          nodeId,
+          node: data.data.node,
+          calls: data.data.calls ?? [],
+          calledBy: data.data.calledBy ?? [],
+          imports: data.data.imports ?? [],
+          importedBy: data.data.importedBy ?? [],
+          codePreview: data.data.codePreview ?? null
+        })
+      }
+    } catch (_) {
+      // Silent fail — panel just won't open
+    }
   }
 
   function handleNodeHover(event: CustomEvent) {
@@ -137,7 +158,9 @@
   async function handleLODChange(event: CustomEvent) {
     const lod = event.detail
     setLOD(lod, ws)
-    const depth = lodDepth[lod] ?? 1
+    const lodDepthValue = lodDepth[lod] ?? 1
+    // Always load at least depth=2 to include entry point files
+    const depth = Math.max(lodDepthValue, 2)
     try {
       const response = await fetch(`/api/graph/root?depth=${depth}`)
       const data = await response.json()
@@ -157,77 +180,99 @@
   function handleCloseNodePanel() {
     clearSelectedNode()
   }
+
+  function sanitizeProjectName(name: string): string {
+    return name
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+      .trim()
+  }
+
+  // Extract project name from current subgraph
+  $: if ($currentSubgraph) {
+    const projectNode = $currentSubgraph.nodes.find(n => n.type === 'project')
+    if (projectNode) {
+      projectName = sanitizeProjectName(projectNode.label)
+    }
+  }
 </script>
 
 <div class="app {$graphState.theme}">
-  <header class="header">
-    <div class="header-content">
-      <h1>Codeflow</h1>
-    </div>
-  </header>
-
-  <main class="main-content">
-    <div class="graph-container">
-      {#if $currentSubgraph}
-        {#key `${$graphVersion}-${$graphState.theme}`}
-          <GraphRenderer
-            data={$currentSubgraph}
-            state={$graphState}
-            cameraZoom={cameraZoom}
-            resetCameraFlag={resetCameraFlag}
-            on:selectNode={handleNodeSelect}
-            on:hoverNode={handleNodeHover}
-            on:zoom={handleZoom}
-            on:pan={handlePan}
-          />
-        {/key}
-      {:else}
-        <div class="empty-state">
-          <p>No graph loaded. Select a node to begin.</p>
-        </div>
-      {/if}
-    </div>
-
-    {#if $selectedNodeDetails}
-      <div class="node-panel-container">
-        <NodePanel
-          node={$selectedNodeDetails.node}
-          neighbors={$selectedNodeDetails.neighbors}
-          on:close={handleCloseNodePanel}
-          on:selectNode={handleNodeSelect}
-        />
+  <div class="app-main">
+    <header class="header">
+      <div class="header-content">
+        <h1><span class="header-label">Project:</span> {projectName}</h1>
       </div>
-    {/if}
-  </main>
+    </header>
 
-  <footer class="footer">
-    <Toolbar
-      state={$graphState}
-      on:zoomChange={handleZoomChange}
-      on:resetCamera={handleResetCamera}
-      on:lodChange={handleLODChange}
-      on:themeChange={handleThemeChange}
-    />
-    <div class="status">
-      {#if $wsError}
-        <span class="status-error">⚠️ {$wsError}</span>
-      {:else if $wsConnected}
-        <span class="status-ok">✓ Connected</span>
-      {:else}
-        <span class="status-connecting">↻ Connecting...</span>
-      {/if}
+    <main class="main-content">
+      <div class="graph-container">
+        {#if $currentSubgraph}
+          {#key `${$graphVersion}-${$graphState.theme}`}
+            <GraphRenderer
+              data={$currentSubgraph}
+              state={$graphState}
+              lod={$graphState.lod}
+              cameraZoom={cameraZoom}
+              resetCameraFlag={resetCameraFlag}
+              on:selectNode={handleNodeSelect}
+              on:hoverNode={handleNodeHover}
+              on:zoom={handleZoom}
+              on:pan={handlePan}
+            />
+          {/key}
+        {:else}
+          <div class="empty-state">
+            <p>No graph loaded. Select a node to begin.</p>
+          </div>
+        {/if}
+      </div>
+    </main>
 
-      {#if $error}
-        <div class="error-banner">
-          <p>{$error}</p>
-          <button on:click={clearError}>Dismiss</button>
-        </div>
-      {/if}
+    <footer class="footer">
+      <Toolbar
+        state={$graphState}
+        on:zoomChange={handleZoomChange}
+        on:resetCamera={handleResetCamera}
+        on:lodChange={handleLODChange}
+        on:themeChange={handleThemeChange}
+      />
+      <div class="status">
+        {#if $wsError}
+          <span class="status-error">⚠️ {$wsError}</span>
+        {:else if $wsConnected}
+          <span class="status-ok">✓ Connected</span>
+        {:else}
+          <span class="status-connecting">↻ Connecting...</span>
+        {/if}
 
-      {#if $isLoading}
-        <span class="status-loading">↻ Loading...</span>
-      {/if}
+        {#if $error}
+          <div class="error-banner">
+            <p>{$error}</p>
+            <button on:click={clearError}>Dismiss</button>
+          </div>
+        {/if}
+
+        {#if $isLoading}
+          <span class="status-loading">↻ Loading...</span>
+        {/if}
+      </div>
+    </footer>
+  </div>
+
+  {#if $selectedNodeDetails}
+    <div class="node-panel-container">
+      <NodePanel
+        node={$selectedNodeDetails.node}
+        calls={$selectedNodeDetails.calls}
+        calledBy={$selectedNodeDetails.calledBy}
+        imports={$selectedNodeDetails.imports}
+        importedBy={$selectedNodeDetails.importedBy}
+        codePreview={$selectedNodeDetails.codePreview}
+        on:close={handleCloseNodePanel}
+        on:selectNode={handleNodeSelect}
+      />
     </div>
-  </footer>
+  {/if}
 </div>
 

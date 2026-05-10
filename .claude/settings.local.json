@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(node dist/src/cli/index.js scan /tmp/test-codebase)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Read(//Users/nishantpradhan/Code/legacy/analytics-reporting-api/**)"
     ]
   }
 }

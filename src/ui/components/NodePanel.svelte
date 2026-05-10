@@ -4,7 +4,11 @@
   import type { GraphNode } from '../../../shared/types'
 
   export let node: GraphNode
-  export let neighbors: { incoming: GraphNode[]; outgoing: GraphNode[] }
+  export let calls: GraphNode[] = []
+  export let calledBy: GraphNode[] = []
+  export let imports: GraphNode[] = []
+  export let importedBy: GraphNode[] = []
+  export let codePreview: string | null = null
 
   const dispatch = createEventDispatcher()
 
@@ -39,6 +43,9 @@
   $: isExported = 'isExported' in node ? (node as any).isExported : false
   $: isAsync = 'isAsync' in node ? (node as any).isAsync : false
   $: isMethod = 'isMethod' in node ? (node as any).isMethod : false
+  $: language = 'language' in node ? (node as any).language : undefined
+  $: lineStart = 'lineStart' in node ? (node as any).lineStart : undefined
+  $: lineEnd = 'lineEnd' in node ? (node as any).lineEnd : undefined
 </script>
 
 <div class="node-panel">
@@ -61,10 +68,24 @@
         <span class="value">{node.path}</span>
       </div>
 
+      {#if language !== undefined}
+        <div class="detail-row">
+          <span class="label">Language:</span>
+          <span class="value">{language}</span>
+        </div>
+      {/if}
+
       {#if lineCount !== undefined}
         <div class="detail-row">
           <span class="label">Lines:</span>
           <span class="value">{lineCount}</span>
+        </div>
+      {/if}
+
+      {#if lineStart !== undefined && lineEnd !== undefined}
+        <div class="detail-row">
+          <span class="label">Location:</span>
+          <span class="value">{lineStart}–{lineEnd}</span>
         </div>
       {/if}
 
@@ -98,42 +119,95 @@
     </div>
   </div>
 
-  <div class="neighbors-section">
-    <h3>Incoming ({neighbors.incoming.length})</h3>
-    <div class="neighbor-list">
-      {#each neighbors.incoming as neighbor (neighbor.id)}
-        <button
-          class="neighbor-item"
-          on:click={() => selectNode(neighbor.id)}
-          style="border-left-color: {getNodeTypeColor(neighbor.type)}"
-        >
-          <span class="icon">{getNodeIcon(neighbor.type)}</span>
-          <span class="name">{neighbor.label}</span>
-        </button>
-      {/each}
-      {#if neighbors.incoming.length === 0}
-        <p class="empty">No incoming connections</p>
-      {/if}
+  {#if codePreview}
+    <div class="code-preview-section">
+      <h3>Code</h3>
+      <pre class="code-preview"><code>{codePreview}</code></pre>
     </div>
-  </div>
+  {/if}
 
-  <div class="neighbors-section">
-    <h3>Outgoing ({neighbors.outgoing.length})</h3>
-    <div class="neighbor-list">
-      {#each neighbors.outgoing as neighbor (neighbor.id)}
-        <button
-          class="neighbor-item"
-          on:click={() => selectNode(neighbor.id)}
-          style="border-left-color: {getNodeTypeColor(neighbor.type)}"
-        >
-          <span class="icon">{getNodeIcon(neighbor.type)}</span>
-          <span class="name">{neighbor.label}</span>
-        </button>
-      {/each}
-      {#if neighbors.outgoing.length === 0}
-        <p class="empty">No outgoing connections</p>
-      {/if}
+  {#if calls.length > 0 || node.type === 'function'}
+    <div class="relations-section">
+      <h3>Calls ({calls.length})</h3>
+      <div class="relation-list">
+        {#each calls as item (item.id)}
+          <button
+            class="relation-item"
+            on:click={() => selectNode(item.id)}
+            style="border-left-color: {getNodeTypeColor(item.type)}"
+          >
+            <span class="icon">{getNodeIcon(item.type)}</span>
+            <span class="name">{item.label}</span>
+          </button>
+        {/each}
+        {#if calls.length === 0}
+          <p class="empty">No outgoing calls</p>
+        {/if}
+      </div>
     </div>
-  </div>
+  {/if}
+
+  {#if calledBy.length > 0 || node.type === 'function'}
+    <div class="relations-section">
+      <h3>Called By ({calledBy.length})</h3>
+      <div class="relation-list">
+        {#each calledBy as item (item.id)}
+          <button
+            class="relation-item"
+            on:click={() => selectNode(item.id)}
+            style="border-left-color: {getNodeTypeColor(item.type)}"
+          >
+            <span class="icon">{getNodeIcon(item.type)}</span>
+            <span class="name">{item.label}</span>
+          </button>
+        {/each}
+        {#if calledBy.length === 0}
+          <p class="empty">No incoming calls</p>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if imports.length > 0 || node.type === 'file' || node.type === 'module' || node.type === 'folder'}
+    <div class="relations-section">
+      <h3>Imports ({imports.length})</h3>
+      <div class="relation-list">
+        {#each imports as item (item.id)}
+          <button
+            class="relation-item"
+            on:click={() => selectNode(item.id)}
+            style="border-left-color: {getNodeTypeColor(item.type)}"
+          >
+            <span class="icon">{getNodeIcon(item.type)}</span>
+            <span class="name">{item.label}</span>
+          </button>
+        {/each}
+        {#if imports.length === 0}
+          <p class="empty">No outgoing imports</p>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if importedBy.length > 0 || node.type === 'file' || node.type === 'module' || node.type === 'folder'}
+    <div class="relations-section">
+      <h3>Imported By ({importedBy.length})</h3>
+      <div class="relation-list">
+        {#each importedBy as item (item.id)}
+          <button
+            class="relation-item"
+            on:click={() => selectNode(item.id)}
+            style="border-left-color: {getNodeTypeColor(item.type)}"
+          >
+            <span class="icon">{getNodeIcon(item.type)}</span>
+            <span class="name">{item.label}</span>
+          </button>
+        {/each}
+        {#if importedBy.length === 0}
+          <p class="empty">No incoming imports</p>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 

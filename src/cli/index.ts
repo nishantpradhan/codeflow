@@ -104,6 +104,16 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     let parsedCount = 0
     let functionCount = 0
 
+    for (const file of scanResult.rootFiles) {
+      const filePath = resolve(projectRoot, file.path)
+      if (existsSync(filePath)) {
+        const parsed = parseFile(filePath)
+        sqlite.storeASTCache(parsed)
+        functionCount += parsed.functions.length
+        parsedCount++
+      }
+    }
+
     for (const module of scanResult.modules) {
       for (const file of getAllFiles(module)) {
         const filePath = resolve(projectRoot, file.path)
@@ -157,6 +167,45 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     }
     await neo4j.createNode(projectNode)
     nodeCount++
+
+    // Create file nodes for files directly in scanRoot (e.g. src/index.js)
+    for (const file of scanResult.rootFiles) {
+      const fileId = makeNodeId(file.path, 'file')
+      const parsed = sqlite.getASTCache(file.path)
+      const fileNode: FileNode = {
+        id: fileId,
+        type: 'file',
+        level: 4,
+        label: file.name,
+        path: file.path,
+        hash: file.hash,
+        visited: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        parentId: projectNode.id,
+        language: file.language,
+        lineCount: parsed?.lineCount || 0,
+        imports: parsed?.imports.map(i => i.source) || [],
+        exports: parsed?.exports.map(e => e.name) || [],
+        isEntryPoint: file.path === scanResult.entryPoint,
+        isTest: file.name.includes('.test.') || file.name.includes('.spec.'),
+        isConfig: file.name.includes('.config.') || file.name === 'package.json'
+      }
+      await neo4j.createNode(fileNode)
+      nodeCount++
+
+      const edgeId = makeEdgeId(projectNode.id, 'CONTAINS', fileId)
+      await neo4j.createEdge({
+        id: edgeId,
+        source: projectNode.id,
+        target: fileId,
+        type: 'CONTAINS',
+        label: 'contains',
+        weight: 1,
+        createdAt: new Date()
+      })
+      edgeCount++
+    }
 
     // Create module, folder, and file nodes
     for (const module of scanResult.modules) {

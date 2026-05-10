@@ -241,6 +241,7 @@ export interface ScanResult {
   entryPoint: string
   packageJson: PackageJson | null
   modules: ScannedModule[]
+  rootFiles: ScannedFile[]   // files directly in scanRoot (e.g. src/index.js)
   scannedAt: Date
   totalFiles: number
 }

@@ -112,6 +112,41 @@ export class QueryEngine {
     }
   }
 
+  async getNodeRelations(
+    nodeId: NodeId
+  ): Promise<{
+    calls: GraphNode[]
+    calledBy: GraphNode[]
+    imports: GraphNode[]
+    importedBy: GraphNode[]
+  }> {
+    // Get CALLS edges — depth 1, both directions
+    const { data: callsGraph } = await this.getSubgraph({ nodeId, depth: 1, edgeTypes: ['CALLS'] })
+    const callsNodeMap = new Map(callsGraph.nodes.map(n => [n.id, n]))
+    const calls = callsGraph.edges
+      .filter(e => e.source === nodeId)
+      .map(e => callsNodeMap.get(e.target))
+      .filter((n): n is GraphNode => !!n)
+    const calledBy = callsGraph.edges
+      .filter(e => e.target === nodeId)
+      .map(e => callsNodeMap.get(e.source))
+      .filter((n): n is GraphNode => !!n)
+
+    // Get IMPORTS edges — depth 1, both directions
+    const { data: importsGraph } = await this.getSubgraph({ nodeId, depth: 1, edgeTypes: ['IMPORTS'] })
+    const importsNodeMap = new Map(importsGraph.nodes.map(n => [n.id, n]))
+    const imports = importsGraph.edges
+      .filter(e => e.source === nodeId)
+      .map(e => importsNodeMap.get(e.target))
+      .filter((n): n is GraphNode => !!n)
+    const importedBy = importsGraph.edges
+      .filter(e => e.target === nodeId)
+      .map(e => importsNodeMap.get(e.source))
+      .filter((n): n is GraphNode => !!n)
+
+    return { calls, calledBy, imports, importedBy }
+  }
+
   async getCircularDeps(): Promise<QueryResult<NodeId[][]>> {
     const startTime = Date.now()
 

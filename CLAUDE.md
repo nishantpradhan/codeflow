@@ -285,6 +285,46 @@ Sigma.js re-layout + animate
 ✅ All 10 Phase 2 files implemented
 ```
 
+### Node Detail Panel (✅ COMPLETE)
+
+**What it does:** When user clicks a node on the graph, a right-side panel opens showing:
+- **Metadata** — node type, path, language, line count, flags (exported/async/method)
+- **Code Preview** — actual source code excerpt for function nodes (reads from filesystem)
+- **Relationships**:
+  - **Calls** — functions this function calls (CALLS edges outgoing)
+  - **Called By** — functions that call this function (CALLS edges incoming)
+  - **Imports** — files this file imports (IMPORTS edges outgoing)
+  - **Imported By** — files that import this file (IMPORTS edges incoming)
+
+**Architecture:**
+
+Backend (`src/server/graphApi.ts`):
+- `GET /api/graph/node/:nodeId` endpoint
+- Uses `queryEngine.getNodeRelations(nodeId)` to fetch typed relationships
+- Reads source file and extracts code lines for functions
+- Returns: `{ node, calls, calledBy, imports, importedBy, codePreview }`
+
+QueryEngine (`src/query/queryEngine.ts`):
+- `getNodeRelations(nodeId)` — separates CALLS from IMPORTS edges
+- Uses `getSubgraph({ nodeId, depth: 1, edgeTypes })` to filter by edge type
+- Returns: `{ calls, calledBy, imports, importedBy }` as `GraphNode[]` arrays
+
+Frontend (`src/ui/components/NodePanel.svelte`):
+- Displays metadata grid dynamically based on node type
+- Shows code preview in `<pre><code>` block (dark theme, monospace, scrollable)
+- Renders each relationship section only when non-empty
+- Clicking neighbors triggers navigation (re-selects that node)
+
+**Data requirements:**
+- Graph must have IMPORTS edges (file→file imports) — created by scanner
+- Graph must have CALLS edges (function→function calls) — created by scanner
+- Source files must be readable from filesystem (for code preview)
+
+**Known limitations:**
+- Only shows 1-hop relationships (direct imports/calls only)
+- Module/folder nodes don't have direct IMPORTS — only files do
+- Code preview requires source file access (skips silently if file not found)
+
 ### Phase 3 Exit Criteria
 
 Do not ship until ALL of these pass:

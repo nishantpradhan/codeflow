@@ -3,7 +3,7 @@
 // Phase 2 — UI-specific types for frontend/backend communication
 // ============================================================
 
-import type { GraphNode, GraphEdge, NodeId, EdgeType, SubGraph } from './types'
+import type { GraphNode, NodeId, EdgeType, SubGraph } from './types'
 
 // ============================================================
 // GRAPH RENDERING (Sigma.js)
@@ -15,6 +15,7 @@ export interface SigmaNode {
   size: number
   color: string
   type: string  // node type for styling
+  isEntryPoint?: boolean
   x?: number
   y?: number
 }
@@ -49,11 +50,11 @@ export interface GraphViewState {
 export interface NodeDetailsPanel {
   nodeId: NodeId
   node: GraphNode
-  neighbors: {
-    incoming: GraphNode[]
-    outgoing: GraphNode[]
-  }
-  relatedPatterns?: string[]
+  calls: GraphNode[]
+  calledBy: GraphNode[]
+  imports: GraphNode[]
+  importedBy: GraphNode[]
+  codePreview: string | null
 }
 
 // ============================================================
@@ -228,19 +229,11 @@ export interface NodeDetailsRequest {
 
 export interface NodeDetailsResponse {
   node: GraphNode
-  neighbors: {
-    incoming: GraphNode[]
-    outgoing: GraphNode[]
-  }
-  patterns: Array<{
-    name: string
-    lineStart: number
-    lineEnd: number
-  }>
-  callGraph?: {
-    nodes: GraphNode[]
-    edges: GraphEdge[]
-  }
+  calls: GraphNode[]
+  calledBy: GraphNode[]
+  imports: GraphNode[]
+  importedBy: GraphNode[]
+  codePreview: string | null
 }
 
 // ============================================================
@@ -300,10 +293,11 @@ export interface GraphRendererProps {
 
 export interface NodePanelProps {
   node: GraphNode
-  neighbors: {
-    incoming: GraphNode[]
-    outgoing: GraphNode[]
-  }
+  calls: GraphNode[]
+  calledBy: GraphNode[]
+  imports: GraphNode[]
+  importedBy: GraphNode[]
+  codePreview: string | null
   onSelectNode: (nodeId: NodeId) => void
   onClose: () => void
 }

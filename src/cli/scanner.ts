@@ -38,6 +38,7 @@ export function scan(projectRoot: string): ScanResult {
   const projectLanguage = detectLanguage(entryPoint)
 
   const modules: ScannedModule[] = []
+  const rootFiles: ScannedFile[] = []
   let totalFiles = 0
 
   function shouldIgnore(name: string): boolean {
@@ -104,7 +105,27 @@ export function scan(projectRoot: string): ScanResult {
       .sort((a, b) => a.name.localeCompare(b.name))
 
     for (const entry of entries) {
-      if (shouldIgnore(entry.name) || !entry.isDirectory()) continue
+      if (shouldIgnore(entry.name)) continue
+
+      if (entry.isFile()) {
+        const fullPath = resolve(scanRoot, entry.name)
+        const relativePath = relative(projectRoot, fullPath)
+        const language = detectLanguage(entry.name)
+        if (language !== 'unknown') {
+          const stats = statSync(fullPath)
+          rootFiles.push({
+            path: relativePath,
+            name: entry.name,
+            language,
+            sizeBytes: stats.size,
+            hash: hashFile(fullPath)
+          })
+          totalFiles++
+        }
+        continue
+      }
+
+      if (!entry.isDirectory()) continue
 
       const modulePath = resolve(scanRoot, entry.name)
       const moduleRelativePath = relative(projectRoot, modulePath)
@@ -131,6 +152,7 @@ export function scan(projectRoot: string): ScanResult {
     entryPoint,
     packageJson,
     modules,
+    rootFiles,
     scannedAt: new Date(),
     totalFiles
   }

@@ -21,6 +21,7 @@
     "scan": "tsx src/cli/index.ts scan",
     "watch": "tsx src/cli/index.ts watch",
     "clean": "rm -rf dist data/codeflow.db",
+    "clean:db": "tsx scripts/clearNeo4j.ts",
     "type-check": "tsc --noEmit",
     "preview": "vite preview",
     "postinstall": "chmod +x dist/src/cli/index.js || true",

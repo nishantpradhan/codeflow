@@ -71,8 +71,9 @@ export class Neo4jDB {
       const properties = this.nodeToProperties(node)
 
       await session.run(
-        `CREATE (n:${node.type} $properties)`,
-        { properties }
+        `MERGE (n:${node.type} { id: $id })
+         SET n += $properties`,
+        { id: node.id, properties }
       )
     } finally {
       await session.close()
@@ -143,10 +144,12 @@ export class Neo4jDB {
       await session.run(
         `MATCH (source { id: $sourceId })
          MATCH (target { id: $targetId })
-         CREATE (source)-[r:${edge.type} $props]->(target)`,
+         MERGE (source)-[r:${edge.type} { id: $edgeId }]->(target)
+         SET r += $props`,
         {
           sourceId: edge.source,
           targetId: edge.target,
+          edgeId: edge.id,
           props: edgeProps
         }
       )

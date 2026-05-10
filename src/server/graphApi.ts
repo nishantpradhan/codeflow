@@ -1,5 +1,7 @@
 import { Router } from 'express'
 import type { Request, Response } from 'express'
+import { promises as fs } from 'fs'
+import { join } from 'path'
 import { QueryEngine } from '../query/queryEngine'
 import type { GraphViewData, SigmaNode, SigmaEdge, NodeDetailsResponse, SearchResponse } from '../../shared/ui-types'
 import type { SubGraph, GraphNode } from '../../shared/types'
@@ -59,29 +61,30 @@ export function createGraphRouter(queryEngine: QueryEngine): Router {
         })
       }
 
-      const incoming = await queryEngine.getDependents({ nodeId, depth: 1 })
-      const outgoing = await queryEngine.getDependencies(nodeId)
+      const relations = await queryEngine.getNodeRelations(nodeId)
 
-      const incomingNodes: GraphNode[] = []
-      const outgoingNodes: GraphNode[] = []
-
-      for (const id of incoming.data) {
-        const n = await queryEngine.getNode(id)
-        if (n) incomingNodes.push(n)
-      }
-
-      for (const id of outgoing.data) {
-        const n = await queryEngine.getNode(id)
-        if (n) outgoingNodes.push(n)
+      let codePreview: string | null = null
+      // Read code preview for function nodes
+      if (node.type === 'function' && 'lineStart' in node && 'lineEnd' in node) {
+        try {
+          const filePath = join(process.cwd(), node.path)
+          const content = await fs.readFile(filePath, 'utf-8')
+          const lines = content.split('\n')
+          const start = Math.max(0, (node as any).lineStart - 1)
+          const end = Math.min(lines.length, (node as any).lineEnd)
+          codePreview = lines.slice(start, end).join('\n')
+        } catch (_) {
+          // Silent fail — code preview just won't be available
+        }
       }
 
       const response: NodeDetailsResponse = {
         node,
-        neighbors: {
-          incoming: incomingNodes,
-          outgoing: outgoingNodes
-        },
-        patterns: []
+        calls: relations.calls,
+        calledBy: relations.calledBy,
+        imports: relations.imports,
+        importedBy: relations.importedBy,
+        codePreview
       }
 
       res.json({
@@ -390,7 +393,8 @@ function convertToSigma(subgraph: SubGraph): GraphViewData {
       label: node.label,
       size,
       color,
-      type: node.type
+      type: node.type,
+      isEntryPoint: node.type === 'file' ? (node as any).isEntryPoint ?? false : undefined
     }
   })
 
