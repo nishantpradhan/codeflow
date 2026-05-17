@@ -13,17 +13,21 @@ import type {
 } from '../../shared/ui-types'
 import { QueryEngine } from '../query/queryEngine'
 import { HybridSearch } from '../ai/hybridSearch'
+import { ContextBuilder } from '../ai/contextBuilder'
 import type { GraphNode, NodeId, SubGraph } from '../../shared/types'
+import type { FlowContextMessage } from '../../shared/ui-types'
 
 export class WSServer {
   private wss: WebSocketServer
   private queryEngine: QueryEngine
   private hybridSearch: HybridSearch
+  private contextBuilder: ContextBuilder
   private clients: Map<WebSocket, ClientState> = new Map()
 
   constructor(httpServer: HttpServer, queryEngine: QueryEngine, hybridSearch: HybridSearch) {
     this.queryEngine = queryEngine
     this.hybridSearch = hybridSearch
+    this.contextBuilder = new ContextBuilder(hybridSearch, queryEngine)
     this.wss = new WebSocketServer({ server: httpServer })
 
     this.wss.on('connection', (ws: WebSocket) => {
@@ -80,6 +84,9 @@ export class WSServer {
           break
         case 'search':
           await this._handleSearch(ws, message.query)
+          break
+        case 'flow_select':
+          await this._handleFlowSelect(ws, message.nodeId)
           break
         case 'filter':
           this._handleFilter(ws, message.options)
@@ -150,11 +157,39 @@ export class WSServer {
   ): Promise<void> {
     try {
       const queryText = typeof query === 'string' ? query : query.text
-      const mode: 'name' | 'imports' | 'calls' = typeof query === 'object' && query.mode ? query.mode : 'name'
+      const mode: 'name' | 'imports' | 'calls' | 'flow' = typeof query === 'object' && query.mode ? query.mode : 'name'
 
-      type ResultRow = { nodeId: NodeId; label: string; type: string; path: string; matches: number }
+      type ResultRow = { nodeId: NodeId; label: string; type: string; path: string; matches: number; reason?: string }
       let results: ResultRow[]
-      if (mode === 'name') {
+      if (mode === 'flow') {
+        const clientState = this.clients.get(ws)
+        const lod = clientState?.viewState.lod ?? 'files'
+        const ctx = await this.contextBuilder.build(queryText, lod)
+        const allIds = [...ctx.seedNodes, ...ctx.expandedNodes]
+        const nodes = await Promise.all(allIds.map(id => this.queryEngine.getNode(id as NodeId)))
+        results = nodes
+          .map((node, i) => node ? {
+            nodeId: node.id as NodeId,
+            label: node.label,
+            type: node.type,
+            path: node.path,
+            matches: Math.round((ctx.scores[allIds[i]] ?? 0) * 100),
+            reason: ctx.reasons[allIds[i]]
+          } : null)
+          .filter((r) => r !== null) as ResultRow[]
+
+        const flowMsg: FlowContextMessage = {
+          type: 'flow_context',
+          data: {
+            seedNodes: ctx.seedNodes,
+            expandedNodes: ctx.expandedNodes,
+            edges: ctx.edges.map(e => ({ source: e.source, target: e.target, type: e.type })),
+            scores: ctx.scores,
+            reasons: ctx.reasons
+          }
+        }
+        ws.send(JSON.stringify(flowMsg))
+      } else if (mode === 'name') {
         const hits = await this.hybridSearch.search(queryText, 10)
         results = hits.map(hit => ({
           nodeId: hit.nodeId as NodeId,
@@ -205,6 +240,44 @@ export class WSServer {
         query: queryText
       }
       ws.send(JSON.stringify(message))
+    } catch (error) {
+      this._sendError(ws, (error as Error).message)
+    }
+  }
+
+  private async _handleFlowSelect(ws: WebSocket, nodeId: NodeId): Promise<void> {
+    const clientState = this.clients.get(ws)
+    const lod = clientState?.viewState.lod ?? 'files'
+
+    try {
+      const ctx = await this.contextBuilder.buildFromNode(nodeId, lod)
+      const allIds = [...ctx.seedNodes, ...ctx.expandedNodes]
+      const nodes = await Promise.all(allIds.map(id => this.queryEngine.getNode(id as NodeId)))
+
+      const results = nodes
+        .map((node, i) => node ? {
+          nodeId: node.id as NodeId,
+          label: node.label,
+          type: node.type,
+          path: node.path,
+          matches: Math.round((ctx.scores[allIds[i]] ?? 0) * 100),
+          reason: ctx.reasons[allIds[i]]
+        } : null)
+        .filter(r => r !== null) as Array<{ nodeId: NodeId; label: string; type: string; path: string; matches: number; reason?: string }>
+
+      ws.send(JSON.stringify({ type: 'search_results', results, query: nodeId }))
+
+      const flowMsg: FlowContextMessage = {
+        type: 'flow_context',
+        data: {
+          seedNodes: ctx.seedNodes,
+          expandedNodes: ctx.expandedNodes,
+          edges: ctx.edges.map(e => ({ source: e.source, target: e.target, type: e.type })),
+          scores: ctx.scores,
+          reasons: ctx.reasons
+        }
+      }
+      ws.send(JSON.stringify(flowMsg))
     } catch (error) {
       this._sendError(ws, (error as Error).message)
     }

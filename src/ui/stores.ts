@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store'
-import type { GraphViewState, GraphViewData, NodeDetailsPanel, SearchResult, AppStore } from '../../shared/ui-types'
+import type { GraphViewState, GraphViewData, NodeDetailsPanel, SearchResult, AppStore, FlowLayoutData } from '../../shared/ui-types'
 import type { NodeId } from '../../shared/types'
 
 // ============================================================
@@ -23,10 +23,12 @@ export const graphVersion = writable(0)
 
 export const searchResults = writable<SearchResult[]>([])
 
-export type SearchMode = 'name' | 'imports' | 'calls'
+export type SearchMode = 'name' | 'imports' | 'calls' | 'flow'
 export const searchMode = writable<SearchMode>('name')
 
 export const pinnedHighlight = writable<string | null>(null)
+
+export const flowContext = writable<FlowLayoutData | null>(null)
 
 export const isLoading = writable(false)
 
@@ -199,6 +201,18 @@ export function clearSearchResults(): void {
   searchResults.set([])
   searchMode.set('name')
   pinnedHighlight.set(null)
+  flowContext.set(null)
+}
+
+export function setFlowContext(data: FlowLayoutData | null): void {
+  flowContext.set(data)
+}
+
+export function flowSelectNode(nodeId: NodeId, ws: WebSocket | null): void {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    isLoading.set(true)
+    ws.send(JSON.stringify({ type: 'flow_select', nodeId }))
+  }
 }
 
 export function clearError(): void {

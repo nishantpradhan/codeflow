@@ -1,7 +1,7 @@
 <script lang="ts">
   import './GraphRenderer.scss'
   import { createEventDispatcher, onMount } from 'svelte'
-  import type { GraphViewData, GraphViewState } from '../../../shared/ui-types'
+  import type { GraphViewData, GraphViewState, FlowLayoutData } from '../../../shared/ui-types'
   import type { NodeId } from '../../../shared/types'
 
   export let data: GraphViewData
@@ -10,6 +10,7 @@
   export let cameraZoom: number | null = null
   export let resetCameraFlag: number = 0
   export let highlightedNodes: Set<string> = new Set()
+  export let flowContext: FlowLayoutData | null = null
 
   const dispatch = createEventDispatcher()
 
@@ -261,10 +262,101 @@
     searchState.visible = visible
     sigma.refresh()
   }
+
+  // Hierarchical layout for flow mode — BFS rank assignment, no external deps
+  let _savedPositions = new Map<string, { x: number; y: number }>()
+
+  function _computeFlowLayout(ctx: FlowLayoutData): Map<string, { x: number; y: number }> {
+    const LAYER_GAP = 180
+    const NODE_GAP = 200
+
+    // BFS from seeds following forward edges to assign layer ranks
+    const ranks = new Map<string, number>()
+    for (const id of ctx.seedNodes) ranks.set(id, 0)
+
+    const queue = [...ctx.seedNodes]
+    while (queue.length > 0) {
+      const cur = queue.shift()!
+      const curRank = ranks.get(cur) ?? 0
+      for (const edge of ctx.edges) {
+        if (edge.source === cur && !ranks.has(edge.target)) {
+          ranks.set(edge.target, curRank + 1)
+          queue.push(edge.target)
+        }
+      }
+    }
+
+    // Expanded nodes not reached by BFS land one rank past the deepest seed layer
+    const maxSeedRank = ctx.seedNodes.reduce((m, id) => Math.max(m, ranks.get(id) ?? 0), 0)
+    for (const id of ctx.expandedNodes) {
+      if (!ranks.has(id)) ranks.set(id, maxSeedRank + 1)
+    }
+
+    // Group by rank, compute positions
+    const byRank = new Map<number, string[]>()
+    for (const [id, rank] of ranks) {
+      if (!byRank.has(rank)) byRank.set(rank, [])
+      byRank.get(rank)!.push(id)
+    }
+
+    const positions = new Map<string, { x: number; y: number }>()
+    for (const [rank, ids] of byRank) {
+      ids.forEach((id, i) => {
+        positions.set(id, {
+          x: (i - (ids.length - 1) / 2) * NODE_GAP,
+          y: rank * LAYER_GAP
+        })
+      })
+    }
+    return positions
+  }
+
+  $: if (sigma && flowContext && highlightedNodes.size > 0) {
+    const graph = sigma.getGraph()
+    // Save original positions before first layout
+    if (_savedPositions.size === 0) {
+      for (const nodeId of highlightedNodes) {
+        if (graph.hasNode(nodeId)) {
+          _savedPositions.set(nodeId, {
+            x: graph.getNodeAttribute(nodeId, 'x'),
+            y: graph.getNodeAttribute(nodeId, 'y')
+          })
+        }
+      }
+    }
+    const positions = _computeFlowLayout(flowContext)
+    for (const [nodeId, pos] of positions) {
+      if (graph.hasNode(nodeId)) {
+        graph.setNodeAttribute(nodeId, 'x', pos.x)
+        graph.setNodeAttribute(nodeId, 'y', pos.y)
+      }
+    }
+    sigma.refresh()
+  } else if (sigma && !flowContext && _savedPositions.size > 0) {
+    // Restore positions when flow mode is cleared
+    const graph = sigma.getGraph()
+    for (const [nodeId, pos] of _savedPositions) {
+      if (graph.hasNode(nodeId)) {
+        graph.setNodeAttribute(nodeId, 'x', pos.x)
+        graph.setNodeAttribute(nodeId, 'y', pos.y)
+      }
+    }
+    _savedPositions = new Map()
+    sigma.refresh()
+  }
 </script>
 
 <div class="graph-renderer-wrap">
   <div class="graph-renderer" bind:this={container} />
+  {#if flowContext}
+    <div class="flow-layout-badge">
+      <svg viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11l-1.5-3.5L3 6l3.5-1.5L8 1z"/>
+        <path d="M13 9l.75 1.75L15.5 11l-1.75.75L13 13.5l-.75-1.75L10.5 11l1.75-.75L13 9z" opacity="0.7"/>
+      </svg>
+      Hierarchical Layout
+    </div>
+  {/if}
   <div class="graph-legend">
     <div class="graph-legend__title">Nodes</div>
     {#each [

@@ -73,6 +73,7 @@ export interface SearchResult {
   type: string
   path: string
   matches: number  // how many patterns/imports matched
+  reason?: string  // context builder: why this node is included
 }
 
 export interface FilterOptions {
@@ -97,6 +98,12 @@ export type ClientMessage =
   | LoadSubgraphMessage
   | ChangeThemeMessage
   | ChangeLODMessage
+  | FlowSelectMessage
+
+export interface FlowSelectMessage {
+  type: 'flow_select'
+  nodeId: NodeId
+}
 
 export interface SelectNodeMessage {
   type: 'select_node'
@@ -145,9 +152,23 @@ export interface ChangeLODMessage {
   lod: 'modules' | 'files' | 'functions'
 }
 
+export interface FlowLayoutData {
+  seedNodes: string[]
+  expandedNodes: string[]
+  edges: Array<{ source: string; target: string; type: string }>
+  scores: Record<string, number>
+  reasons: Record<string, string>
+}
+
+export interface FlowContextMessage {
+  type: 'flow_context'
+  data: FlowLayoutData
+}
+
 export type ServerMessage =
   | SubgraphLoadedMessage
   | SearchResultsMessage
+  | FlowContextMessage
   | FileChangedMessage
   | ErrorMessage
   | StateUpdateMessage

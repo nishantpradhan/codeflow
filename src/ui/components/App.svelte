@@ -10,6 +10,7 @@
     graphVersion,
     searchResults,
     pinnedHighlight,
+    flowContext,
     error,
     isLoading,
     setWsConnected,
@@ -17,6 +18,7 @@
     setError,
     updateSubgraph,
     updateSearchResults,
+    setFlowContext,
     clearError,
     selectNode,
     hoverNode,
@@ -25,7 +27,9 @@
     setLOD,
     setTheme,
     clearSelectedNode,
-    updateNodeDetails
+    updateNodeDetails,
+    flowSelectNode,
+    searchMode
   } from '../stores'
   import GraphRenderer from './GraphRenderer.svelte'
   import NodePanel from './NodePanel.svelte'
@@ -80,6 +84,9 @@
         case 'search_results':
           updateSearchResults(message.results)
           break
+        case 'flow_context':
+          setFlowContext(message.data)
+          break
         case 'file_changed':
           console.log('File changed:', message.filePath)
           // Optionally refresh affected nodes
@@ -110,6 +117,11 @@
   async function handleNodeSelect(event: CustomEvent) {
     const nodeId = event.detail
     selectNode(nodeId, ws)
+
+    // In flow mode, clicking a node re-centers the flow on that node
+    if ($searchMode === 'flow') {
+      flowSelectNode(nodeId, ws)
+    }
 
     try {
       const res = await fetch(`/api/graph/node/${encodeURIComponent(nodeId)}`)
@@ -257,6 +269,7 @@
               cameraZoom={cameraZoom}
               resetCameraFlag={resetCameraFlag}
               {highlightedNodes}
+              flowContext={$flowContext}
               on:selectNode={handleNodeSelect}
               on:hoverNode={handleNodeHover}
               on:zoom={handleZoom}

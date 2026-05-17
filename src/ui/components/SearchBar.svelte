@@ -79,10 +79,11 @@
     function: '⚙️'
   }
 
-  const modes: Array<{ id: SearchMode; label: string }> = [
+  const modes: Array<{ id: SearchMode; label: string; ai?: boolean }> = [
     { id: 'name', label: 'Name' },
     { id: 'imports', label: 'Imports' },
-    { id: 'calls', label: 'Calls' }
+    { id: 'calls', label: 'Calls' },
+    { id: 'flow', label: 'Flow', ai: true }
   ]
 
   $: filteredResults = $searchResults
@@ -90,7 +91,9 @@
     ? 'Search files, functions...'
     : $searchMode === 'imports'
       ? 'Find files that import...'
-      : 'Find functions that call...'
+      : $searchMode === 'calls'
+        ? 'Find functions that call...'
+        : 'Describe a flow or concept...'
 </script>
 
 <svelte:window on:mousedown={handleClickOutside} />
@@ -131,7 +134,11 @@
             <span class="result-icon">{nodeTypeIcon[result.type] ?? '●'}</span>
             <span class="result-body">
               <span class="result-label">{result.label}</span>
-              <span class="result-path">{result.path}</span>
+              {#if result.reason}
+                <span class="result-reason">{result.reason}</span>
+              {:else}
+                <span class="result-path">{result.path}</span>
+              {/if}
             </span>
             <span class="result-meta">
               <span class="result-type">{result.type}</span>
@@ -148,9 +155,16 @@
       <button
         class="filter-btn"
         class:active={$searchMode === mode.id}
+        class:filter-btn--ai={mode.ai}
         on:click={() => handleModeChange(mode.id)}
-        title={mode.id === 'name' ? 'Search by name' : mode.id === 'imports' ? 'Find what imports this' : 'Find what calls this'}
+        title={mode.id === 'name' ? 'Search by name' : mode.id === 'imports' ? 'Find what imports this' : mode.id === 'calls' ? 'Find what calls this' : 'AI-powered flow trace'}
       >
+        {#if mode.ai}
+          <svg class="ai-icon" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 1l1.5 3.5L13 6l-3.5 1.5L8 11l-1.5-3.5L3 6l3.5-1.5L8 1z"/>
+            <path d="M13 9l.75 1.75L15.5 11l-1.75.75L13 13.5l-.75-1.75L10.5 11l1.75-.75L13 9z" opacity="0.7"/>
+          </svg>
+        {/if}
         {mode.label}
       </button>
     {/each}

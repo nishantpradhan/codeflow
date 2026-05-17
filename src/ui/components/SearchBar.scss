@@ -131,6 +131,15 @@
   text-overflow: ellipsis;
 }
 
+.result-reason {
+  font-size: 0.75rem;
+  color: var(--accent, #06b6d4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
 .result-meta {
   display: flex;
   flex-direction: column;
@@ -203,4 +212,29 @@
     border-color: #3b82f6;
     color: white;
   }
+
+  &.filter-btn--ai {
+    border-color: #7c3aed;
+    color: #7c3aed;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+
+    &:hover {
+      border-color: #6d28d9;
+      color: #6d28d9;
+    }
+
+    &.active {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      border-color: #7c3aed;
+      color: white;
+    }
+  }
+}
+
+.ai-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
