@@ -24,6 +24,7 @@ const makeSubgraph = (rootId: string, nodes: GraphNode[] = [], edges: any[] = []
 const mockEngine = {
   getSubgraph: vi.fn(),
   getNode: vi.fn(),
+  getNodeRelations: vi.fn(),
   getDependencies: vi.fn(),
   getDependents: vi.fn(),
   getCallGraph: vi.fn(),
@@ -117,18 +118,21 @@ describe('Graph API', () => {
       const node = makeNode('src/db.ts', 'file', 'db.ts')
       mockEngine.getNode.mockResolvedValueOnce(node)
       mockEngine.getDependents.mockResolvedValue({ data: ['src/auth.ts'], fromCache: false, durationMs: 1 })
-      mockEngine.getDependencies.mockResolvedValue({ data: ['node_modules/pg'], fromCache: false, durationMs: 1 })
-      mockEngine.getNode
-        .mockResolvedValueOnce(makeNode('src/auth.ts', 'file', 'auth.ts'))
-        .mockResolvedValueOnce(makeNode('node_modules/pg', 'file', 'pg'))
+      mockEngine.getNode.mockResolvedValue(makeNode('src/db.ts', 'file', 'db.ts'))
+      mockEngine.getNodeRelations.mockResolvedValue({
+        calls: [makeNode('src/auth.ts', 'file', 'auth.ts')],
+        calledBy: [makeNode('src/server.ts', 'file', 'server.ts')],
+        imports: [],
+        importedBy: []
+      })
 
       const res = await request(app).get('/api/graph/node/src%2Fdb.ts')
 
       expect(res.status).toBe(200)
       expect(res.body.success).toBe(true)
       expect(res.body.data.node.id).toBe('src/db.ts')
-      expect(res.body.data.neighbors.incoming).toHaveLength(1)
-      expect(res.body.data.neighbors.outgoing).toHaveLength(1)
+      expect(res.body.data.calls).toHaveLength(1)
+      expect(res.body.data.calledBy).toHaveLength(1)
     })
 
     it('returns 404 when node is not found', async () => {

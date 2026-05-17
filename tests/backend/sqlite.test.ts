@@ -7,9 +7,9 @@ const makeParsedFile = (path: string, hash = 'abc123'): ParsedFile => ({
   hash,
   language: 'typescript',
   lineCount: 50,
-  imports: [{ source: 'express', specifiers: ['Router'], isDefault: false, isDynamic: false }],
-  exports: [{ name: 'handler', isDefault: false, lineNumber: 10 }],
-  functions: [{ name: 'handler', lineStart: 10, lineEnd: 20, isExported: true, isAsync: true, isMethod: false, params: [], calls: [] }],
+  imports: [{ source: 'express', names: ['Router'], isDefault: false, isExternal: true, lineNumber: 1 }],
+  exports: [{ name: 'handler', type: 'function', lineNumber: 10 }],
+  functions: [{ name: 'handler', lineStart: 10, lineEnd: 20, isExported: true, isAsync: true, isMethod: false, params: [], returnType: 'void', calls: [] }],
   parsedAt: new Date('2024-01-01T00:00:00Z')
 })
 
@@ -23,9 +23,9 @@ const makeCacheRecord = (path: string): CacheRecord => ({
 describe('SQLiteDB', () => {
   let db: SQLiteDB
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = new SQLiteDB(':memory:')
-    db.init()
+    await db.init()
   })
 
   afterEach(() => {

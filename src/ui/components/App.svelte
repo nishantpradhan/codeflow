@@ -8,6 +8,8 @@
     selectedNodeDetails,
     currentSubgraph,
     graphVersion,
+    searchResults,
+    pinnedHighlight,
     error,
     isLoading,
     setWsConnected,
@@ -22,13 +24,13 @@
     setPan,
     setLOD,
     setTheme,
-    loadSubgraph,
     clearSelectedNode,
     updateNodeDetails
   } from '../stores'
   import GraphRenderer from './GraphRenderer.svelte'
   import NodePanel from './NodePanel.svelte'
   import Toolbar from './Toolbar.svelte'
+  import SearchBar from './SearchBar.svelte'
 
   let ws: WebSocket | null = null
   let mounted = false
@@ -43,8 +45,8 @@
     // Load root project after a short delay to ensure backend is ready
     setTimeout(async () => {
       try {
-        // Always load depth=2 to include entry point files
-        const response = await fetch('/api/graph/root?depth=2')
+        // depth=3 to include files (src:folder adds one level: project→src→module→file)
+        const response = await fetch('/api/graph/root?depth=3')
         const data = await response.json()
         console.log('Root project response:', data)
         if (data.success && data.data) {
@@ -108,7 +110,6 @@
   async function handleNodeSelect(event: CustomEvent) {
     const nodeId = event.detail
     selectNode(nodeId, ws)
-    loadSubgraph(nodeId, 2, ws)
 
     try {
       const res = await fetch(`/api/graph/node/${encodeURIComponent(nodeId)}`)
@@ -153,14 +154,14 @@
     resetCameraFlag += 1
   }
 
-  const lodDepth: Record<string, number> = { modules: 1, files: 2, functions: 3 }
+  // src:folder adds one level between project and modules, so all depths are +1 vs before
+  const lodDepth: Record<string, number> = { modules: 2, files: 3, functions: 4 }
 
   async function handleLODChange(event: CustomEvent) {
     const lod = event.detail
     setLOD(lod, ws)
-    const lodDepthValue = lodDepth[lod] ?? 1
-    // Always load at least depth=2 to include entry point files
-    const depth = Math.max(lodDepthValue, 2)
+    const lodDepthValue = lodDepth[lod] ?? 2
+    const depth = Math.max(lodDepthValue, 3)
     try {
       const response = await fetch(`/api/graph/root?depth=${depth}`)
       const data = await response.json()
@@ -195,6 +196,42 @@
       projectName = sanitizeProjectName(projectNode.label)
     }
   }
+
+  // Highlighted node IDs — LOD-aware promotion.
+  // - Functions LOD: only direct result nodes; no promotion (function is visible).
+  // - Files LOD: function results promote to their parent file (function nodes hidden at this LOD).
+  // - Modules LOD: top result promotes to its parent module (only modules visible at this LOD).
+  // Pinned highlight (user-clicked result) always stays lit.
+  $: highlightedNodes = (() => {
+    if ($searchResults.length === 0 && !$pinnedHighlight) return new Set<string>()
+    const ids = new Set<string>()
+    const lod = $graphState.lod
+
+    for (const r of $searchResults) {
+      ids.add(r.nodeId as string)
+    }
+
+    if (lod === 'files') {
+      // Promote top function result to its parent file
+      const topFn = $searchResults.find(r => r.type === 'function')
+      if (topFn) ids.add(`${topFn.path}:file`)
+    } else if (lod === 'modules') {
+      // Promote top result to its parent module so something is visible at modules LOD
+      const top = $searchResults[0]
+      if (top) {
+        const segs = top.path.split('/')
+        if (segs.length >= 2) ids.add(`${segs[0]}/${segs[1]}:module`)
+      }
+    }
+
+    if ($pinnedHighlight) ids.add($pinnedHighlight)
+
+    return ids
+  })()
+
+  async function handleSearchSelectNode(event: CustomEvent) {
+    await handleNodeSelect(event)
+  }
 </script>
 
 <div class="app {$graphState.theme}">
@@ -202,6 +239,10 @@
     <header class="header">
       <div class="header-content">
         <h1><span class="header-label">Project:</span> {projectName}</h1>
+        <SearchBar
+          {ws}
+          on:selectNode={handleSearchSelectNode}
+        />
       </div>
     </header>
 
@@ -215,6 +256,7 @@
               lod={$graphState.lod}
               cameraZoom={cameraZoom}
               resetCameraFlag={resetCameraFlag}
+              {highlightedNodes}
               on:selectNode={handleNodeSelect}
               on:hoverNode={handleNodeHover}
               on:zoom={handleZoom}

@@ -246,19 +246,55 @@ function parseFunctionNode(
   let funcBodyStart = 0
 
   if (node.type === 'function_declaration') {
-    name = node.child(1)?.text || ''
+    // For function_declaration: 'function' keyword is followed by identifier
+    const funcChild = node.child(0)
+    if (funcChild?.type === 'function_keyword' || funcChild?.text === 'function') {
+      // Find identifier after function keyword
+      for (let i = 1; i < node.childCount; i++) {
+        const child = node.child(i)
+        if (child?.type === 'identifier') {
+          name = child.text
+          break
+        }
+      }
+    } else {
+      // Fallback: use first identifier before parameters
+      const params = node.descendantsOfType('formal_parameters')[0]
+      if (params) {
+        for (let i = 0; i < node.childCount; i++) {
+          const child = node.child(i)
+          if (child === params) break
+          if (child?.type === 'identifier') {
+            name = child.text
+          }
+        }
+      }
+    }
     paramsNode = node.descendantsOfType('formal_parameters')[0]
     returnTypeNode = node.descendantsOfType('type_annotation')[0]
     const body = node.descendantsOfType('statement_block')[0]
     funcBodyStart = body?.startIndex || node.startIndex
   } else if (node.type === 'method_definition') {
-    name = node.child(0)?.text || ''
+    // For method_definition: must have formal_parameters (skip class properties)
     paramsNode = node.descendantsOfType('formal_parameters')[0]
+    if (!paramsNode) return null // Not a real method, skip class properties
+
+    // Find method name before formal_parameters
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i)
+      if (child === paramsNode) break
+      if (child?.type === 'property_identifier' || (child?.type === 'identifier' && !child?.text?.includes(':'))) {
+        name = child.text
+        break
+      }
+    }
     returnTypeNode = node.descendantsOfType('type_annotation')[0]
     const body = node.descendantsOfType('statement_block')[0]
     funcBodyStart = body?.startIndex || node.startIndex
   } else if (node.type === 'variable_declarator') {
-    name = node.child(0)?.text || ''
+    // For variable_declarator: first child is the variable name
+    const firstChild = node.child(0)
+    name = firstChild?.text || ''
     const value = node.child(node.childCount - 1)
     if (value?.type === 'arrow_function') {
       paramsNode = value.descendantsOfType('formal_parameters')[0] || value.child(0)

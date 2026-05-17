@@ -234,6 +234,137 @@ describe('QueryEngine', () => {
     })
   })
 
+  // ── getFocusedSubgraph ─────────────────────────────────────────
+
+  describe('getFocusedSubgraph', () => {
+    it('function node: returns CALLS edges and its own parent CONTAINS edge only', async () => {
+      const fnId = 'src/cli/index.ts:runScan:70'
+      mockNeo4j.getNode.mockResolvedValue(makeNode(fnId, 'function'))
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [
+          makeNode(fnId, 'function'),
+          makeNode('src/cli/index.ts:printSummary:10', 'function'),
+          makeNode('src/cli/index.ts:file', 'file'),
+          makeNode('src/cli:module', 'module')
+        ],
+        edges: [
+          { source: fnId, target: 'src/cli/index.ts:printSummary:10', type: 'CALLS', weight: 1 },
+          { source: 'src/cli/index.ts:file', target: fnId, type: 'CONTAINS', weight: 1 },
+          { source: 'src/cli:module', target: 'src/cli/index.ts:file', type: 'CONTAINS', weight: 1 }
+        ]
+      })
+
+      const result = await engine.getFocusedSubgraph(fnId as any)
+
+      const callsEdges = result.data.edges.filter(e => e.type === 'CALLS')
+      const containsEdges = result.data.edges.filter(e => e.type === 'CONTAINS')
+      expect(callsEdges).toHaveLength(1)
+      expect(containsEdges).toHaveLength(1)
+      // CONTAINS edge must point TO the function (its parent file)
+      expect(containsEdges[0].target).toBe(fnId)
+      // No IMPORTS edges
+      expect(result.data.edges.some(e => e.type === 'IMPORTS')).toBe(false)
+    })
+
+    it('function node: orphan nodes removed after CALLS filter', async () => {
+      const fnId = 'src/cli/index.ts:runScan:70'
+      mockNeo4j.getNode.mockResolvedValue(makeNode(fnId, 'function'))
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [
+          makeNode(fnId, 'function'),
+          makeNode('src/cli/index.ts:printSummary:10', 'function'),
+          makeNode('src/cli/index.ts:file', 'file'),
+          makeNode('src/cli:module', 'module')   // only reachable via CONTAINS to file — orphan after filter
+        ],
+        edges: [
+          { source: fnId, target: 'src/cli/index.ts:printSummary:10', type: 'CALLS', weight: 1 },
+          { source: 'src/cli/index.ts:file', target: fnId, type: 'CONTAINS', weight: 1 },
+          { source: 'src/cli:module', target: 'src/cli/index.ts:file', type: 'CONTAINS', weight: 1 }
+        ]
+      })
+
+      const result = await engine.getFocusedSubgraph(fnId as any)
+      const nodeIds = result.data.nodes.map(n => n.id)
+
+      expect(nodeIds).toContain(fnId)
+      expect(nodeIds).toContain('src/cli/index.ts:printSummary:10')
+      expect(nodeIds).toContain('src/cli/index.ts:file')
+      expect(nodeIds).not.toContain('src/cli:module')   // orphan — excluded
+    })
+
+    it('file node: returns IMPORTS edges and parent CONTAINS edge only', async () => {
+      const fileId = 'src/cli/index.ts:file'
+      mockNeo4j.getNode.mockResolvedValue(makeNode(fileId, 'file'))
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [
+          makeNode(fileId, 'file'),
+          makeNode('src/cli/scanner.ts:file', 'file'),
+          makeNode('src/cli:module', 'module')
+        ],
+        edges: [
+          { source: fileId, target: 'src/cli/scanner.ts:file', type: 'IMPORTS', weight: 1 },
+          { source: 'src/cli:module', target: fileId, type: 'CONTAINS', weight: 1 }
+        ]
+      })
+
+      const result = await engine.getFocusedSubgraph(fileId as any)
+
+      expect(result.data.edges.some(e => e.type === 'IMPORTS')).toBe(true)
+      expect(result.data.edges.some(e => e.type === 'CALLS')).toBe(false)
+      const containsEdge = result.data.edges.find(e => e.type === 'CONTAINS')
+      expect(containsEdge?.target).toBe(fileId)   // parent CONTAINS, not child
+    })
+
+    it('module node: returns CONTAINS edges only', async () => {
+      const moduleId = 'src/cli:module'
+      mockNeo4j.getNode.mockResolvedValue(makeNode(moduleId, 'module'))
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [
+          makeNode(moduleId, 'module'),
+          makeNode('src/cli/index.ts:file', 'file'),
+          makeNode('src/cli/scanner.ts:file', 'file')
+        ],
+        edges: [
+          { source: moduleId, target: 'src/cli/index.ts:file', type: 'CONTAINS', weight: 1 },
+          { source: moduleId, target: 'src/cli/scanner.ts:file', type: 'CONTAINS', weight: 1 }
+        ]
+      })
+
+      const result = await engine.getFocusedSubgraph(moduleId as any)
+
+      expect(result.data.edges.every(e => e.type === 'CONTAINS')).toBe(true)
+      expect(result.data.edges).toHaveLength(2)
+      expect(result.data.nodes).toHaveLength(3)
+    })
+
+    it('caps result to 30 nodes maximum', async () => {
+      const fnId = 'src/main.ts:main:1'
+      mockNeo4j.getNode.mockResolvedValue(makeNode(fnId, 'function'))
+      const callees = Array.from({ length: 40 }, (_, i) =>
+        makeNode(`src/fn${i}.ts:fn${i}:1`, 'function')
+      )
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [makeNode(fnId, 'function'), ...callees],
+        edges: callees.map(n => ({ source: fnId, target: n.id, type: 'CALLS', weight: 1 }))
+      })
+
+      const result = await engine.getFocusedSubgraph(fnId as any)
+      expect(result.data.nodes.length).toBeLessThanOrEqual(30)
+    })
+
+    it('unknown node type defaults to CONTAINS depth 1', async () => {
+      const nodeId = 'src/unknown:folder'
+      mockNeo4j.getNode.mockResolvedValue(null)   // node not found → type 'unknown'
+      mockNeo4j.getSubgraph.mockResolvedValue({
+        nodes: [makeNode(nodeId, 'folder'), makeNode('src/cli:module', 'module')],
+        edges: [{ source: nodeId, target: 'src/cli:module', type: 'CONTAINS', weight: 1 }]
+      })
+
+      const result = await engine.getFocusedSubgraph(nodeId as any)
+      expect(result.data.edges.every(e => e.type === 'CONTAINS')).toBe(true)
+    })
+  })
+
   // ── getRootProject ─────────────────────────────────────────────
 
   describe('getRootProject', () => {

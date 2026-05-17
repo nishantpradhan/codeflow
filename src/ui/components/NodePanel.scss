@@ -125,8 +125,7 @@ h2 {
 
 .neighbors-section,
 .relations-section {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 h3 {
@@ -179,6 +178,8 @@ h3 {
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  color: var(--text-primary);
+  min-width: 0;
 }
 
 .empty {

@@ -10,6 +10,10 @@ import { SQLiteDB } from '../storage/sqlite'
 import { QueryEngine } from '../query/queryEngine'
 import { WSServer } from './wsServer'
 import { createGraphRouter } from './graphApi'
+import { SQLiteVectorStore } from '../ai/sqliteVectorStore'
+import { SemanticSearch } from '../ai/semanticSearch'
+import { LexicalSearch } from '../ai/lexicalSearch'
+import { HybridSearch } from '../ai/hybridSearch'
 
 dotenv.config()
 
@@ -42,7 +46,11 @@ async function initializeServer() {
     sqlite.init()
 
     console.log(chalk.gray('  Setting up WebSocket server...'))
-    new WSServer(server, queryEngine)
+    const vectorStore = new SQLiteVectorStore(sqlite.getDb())
+    const semanticSearch = new SemanticSearch(vectorStore)
+    const lexicalSearch = new LexicalSearch(neo4j)
+    const hybridSearch = new HybridSearch(lexicalSearch, semanticSearch, neo4j)
+    new WSServer(server, queryEngine, hybridSearch)
 
     console.log(chalk.gray('  Registering API routes...'))
     app.use('/api/graph', createGraphRouter(queryEngine))

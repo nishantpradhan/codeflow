@@ -27,6 +27,7 @@
     "postinstall": "chmod +x dist/src/cli/index.js || true",
     "prepare": "husky",
     "test": "vitest run",
+    "test:node": "node --test 'tests/**/*.test.ts' --loader tsx",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint 'src/**/*.{ts,svelte}' 'shared/**/*.ts'",

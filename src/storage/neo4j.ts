@@ -351,6 +351,32 @@ export class Neo4jDB {
     }
   }
 
+  async searchNodes(
+    query: string,
+    limit: number = 40
+  ): Promise<Array<{ id: string; label: string; type: string; path: string }>> {
+    const session = this.driver.session()
+    try {
+      const result = await session.run(
+        `MATCH (n)
+         WHERE NOT n:Project
+           AND (toLower(n.label) CONTAINS toLower($query)
+             OR toLower(n.path) CONTAINS toLower($query))
+         RETURN n.id AS id, n.label AS label, n.type AS type, n.path AS path
+         LIMIT $limit`,
+        { query, limit: neo4j.int(limit) }
+      )
+      return result.records.map(r => ({
+        id: r.get('id') as string,
+        label: r.get('label') as string,
+        type: r.get('type') as string,
+        path: r.get('path') as string
+      }))
+    } finally {
+      await session.close()
+    }
+  }
+
   async getNodesByType(nodeType: string): Promise<GraphNode[]> {
     const session = this.driver.session()
     try {
@@ -442,7 +468,7 @@ export class Neo4jDB {
     const common = {
       id: props.id as NodeId,
       type: props.type as any,
-      label: props.label,
+      label: props.label ?? props.name ?? (props.id ? String(props.id).split(':').slice(1, -1).join(':') : ''),
       path: props.path,
       hash: props.hash,
       level: props.level,

@@ -25,6 +25,10 @@ export class SQLiteDB {
     this.db.exec(initSql)
   }
 
+  getDb(): Database.Database {
+    return this.db
+  }
+
   close(): void {
     this.db.close()
   }

@@ -23,6 +23,11 @@ export const graphVersion = writable(0)
 
 export const searchResults = writable<SearchResult[]>([])
 
+export type SearchMode = 'name' | 'imports' | 'calls'
+export const searchMode = writable<SearchMode>('name')
+
+export const pinnedHighlight = writable<string | null>(null)
+
 export const isLoading = writable(false)
 
 export const error = writable<string | null>(null)
@@ -160,13 +165,14 @@ export function loadSubgraph(nodeId: NodeId, depth: number, ws: WebSocket | null
   }
 }
 
-export function search(query: string, ws: WebSocket | null): void {
+export function search(query: string, ws: WebSocket | null, mode: SearchMode = 'name'): void {
   if (ws && ws.readyState === WebSocket.OPEN) {
     isLoading.set(true)
     ws.send(JSON.stringify({
       type: 'search',
       query: {
         text: query,
+        mode,
         limit: 50
       }
     }))
@@ -179,6 +185,20 @@ export function clearSelectedNode(): void {
     selectedNodeId: null
   }))
   selectedNodeDetails.set(null)
+}
+
+export function setSearchMode(mode: SearchMode): void {
+  searchMode.set(mode)
+}
+
+export function setPinnedHighlight(nodeId: string | null): void {
+  pinnedHighlight.set(nodeId)
+}
+
+export function clearSearchResults(): void {
+  searchResults.set([])
+  searchMode.set('name')
+  pinnedHighlight.set(null)
 }
 
 export function clearError(): void {

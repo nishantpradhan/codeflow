@@ -12,15 +12,18 @@ import type {
   SigmaEdge
 } from '../../shared/ui-types'
 import { QueryEngine } from '../query/queryEngine'
+import { HybridSearch } from '../ai/hybridSearch'
 import type { GraphNode, NodeId, SubGraph } from '../../shared/types'
 
 export class WSServer {
   private wss: WebSocketServer
   private queryEngine: QueryEngine
+  private hybridSearch: HybridSearch
   private clients: Map<WebSocket, ClientState> = new Map()
 
-  constructor(httpServer: HttpServer, queryEngine: QueryEngine) {
+  constructor(httpServer: HttpServer, queryEngine: QueryEngine, hybridSearch: HybridSearch) {
     this.queryEngine = queryEngine
+    this.hybridSearch = hybridSearch
     this.wss = new WebSocketServer({ server: httpServer })
 
     this.wss.on('connection', (ws: WebSocket) => {
@@ -105,10 +108,18 @@ export class WSServer {
     clientState.viewState.selectedNodeId = nodeId
     clientState.selectedNode = await this.queryEngine.getNode(nodeId)
 
-    if (clientState.selectedNode) {
-      // Load neighbors for the detail panel
-      const neighbors = await this._getNeighbors(nodeId)
-      // Could send node details here, but keeping WebSocket simple
+    try {
+      const result = await this.queryEngine.getFocusedSubgraph(nodeId)
+      const sigma = this._convertToSigma(result.data)
+      const message: SubgraphLoadedMessage = {
+        type: 'subgraph_loaded',
+        data: sigma,
+        nodeId,
+        depth: result.data.depth
+      }
+      ws.send(JSON.stringify(message))
+    } catch (error) {
+      this._sendError(ws, (error as Error).message)
     }
   }
 
@@ -138,12 +149,60 @@ export class WSServer {
     query: any
   ): Promise<void> {
     try {
-      // Search implementation would go here
-      // For now, send empty results
+      const queryText = typeof query === 'string' ? query : query.text
+      const mode: 'name' | 'imports' | 'calls' = typeof query === 'object' && query.mode ? query.mode : 'name'
+
+      type ResultRow = { nodeId: NodeId; label: string; type: string; path: string; matches: number }
+      let results: ResultRow[]
+      if (mode === 'name') {
+        const hits = await this.hybridSearch.search(queryText, 10)
+        results = hits.map(hit => ({
+          nodeId: hit.nodeId as NodeId,
+          label: hit.label,
+          type: hit.type,
+          path: hit.path,
+          matches: Math.round(hit.score * 100)
+        }))
+      } else {
+        // Relationship mode: find the SINGLE best target node, then return who relates to it.
+        // Always include the target as the first result so the user sees what was matched —
+        // otherwise empty importers/callers makes searchResults empty, which falls back to
+        // the non-search LOD view (looks like the graph is "flooded" with IMPORTS edges).
+        const targets = await this.hybridSearch.search(queryText, 1)
+        const rels: ResultRow[] = []
+
+        if (targets.length > 0) {
+          const target = targets[0]
+          // First result: the target itself
+          rels.push({
+            nodeId: target.nodeId as NodeId,
+            label: target.label,
+            type: target.type,
+            path: target.path,
+            matches: Math.round(target.score * 100)
+          })
+
+          const relations = await this.queryEngine.getNodeRelations(target.nodeId as NodeId)
+          const nodes = mode === 'imports' ? relations.importedBy : relations.calledBy
+          for (const node of nodes) {
+            if (node.id === target.nodeId) continue
+            rels.push({
+              nodeId: node.id as NodeId,
+              label: node.label,
+              type: node.type,
+              path: node.path,
+              matches: Math.round(target.score * 100)
+            })
+            if (rels.length >= 10) break
+          }
+        }
+        results = rels
+      }
+
       const message: SearchResultsMessage = {
         type: 'search_results',
-        results: [],
-        query: query.text
+        results,
+        query: queryText
       }
       ws.send(JSON.stringify(message))
     } catch (error) {

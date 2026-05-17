@@ -9,6 +9,7 @@
   export let lod: string = 'modules'
   export let cameraZoom: number | null = null
   export let resetCameraFlag: number = 0
+  export let highlightedNodes: Set<string> = new Set()
 
   const dispatch = createEventDispatcher()
 
@@ -19,6 +20,7 @@
   const outerTypes = new Set(['file', 'function'])
   const outerNodes = new Set<string>()
   const hoverState = { key: null as string | null }
+  const searchState = { highlighted: new Set<string>(), visible: new Set<string>() }
 
   const EDGE_STYLES: Record<string, { color: string; size: number }> = {
     CONTAINS: { color: '#6b7280', size: 1   },
@@ -51,38 +53,16 @@
       byType[node.type].push(node)
     }
 
-    // Create synthetic src folder node (since it's not in the graph but is the parent of modules)
-    const srcFolderNode = {
-      key: 'src:folder',
-      label: 'src',
-      type: 'folder',
-      size: 8,
-      color: '#8b5cf6'
-    }
-
-    // Add src folder to byType for proper layout calculation
-    if (!byType['folder']) byType['folder'] = []
-    byType['folder'].unshift(srcFolderNode)
-
-    const radii: Record<string, number> = { project: 0, module: 150, folder: 300, file: 450, function: 600 }
-    const srcFolderRadius = 80
+    const radii: Record<string, number> = { project: 0, module: 150, folder: 80, file: 450, function: 600 }
 
     const shouldDisplayNode = (node: any): boolean => {
       if (node.type === 'project') return false
-      if (node.key === srcFolderNode.key) return true
+      // src:folder bridges project→modules and is always visible regardless of LOD
+      if (node.key === 'src:folder') return true
       if (lod === 'modules') return node.type === 'module'
       if (lod === 'files') return node.type !== 'function'
       return true
     }
-
-    g.addNode(srcFolderNode.key, {
-      label: srcFolderNode.label,
-      icon: getNodeIcon('folder'),
-      size: srcFolderNode.size * 2,
-      color: srcFolderNode.color,
-      x: srcFolderRadius,
-      y: 0
-    })
 
     for (const node of nodes) {
       if (g.hasNode(node.key)) continue
@@ -116,20 +96,11 @@
       })
     }
 
-    const projectNodeId = nodes.find(n => n.type === 'project')?.key
-
     for (const edge of edges) {
       try {
-        // Replace project-to-module and project-to-rootfile edges with src:folder as source
-        let source = edge.source
-        let target = edge.target
-        if (source === projectNodeId) {
-          source = 'src:folder'
-        }
-
-        if (!g.hasNode(source) || !g.hasNode(target)) continue
+        if (!g.hasNode(edge.source) || !g.hasNode(edge.target)) continue
         const style = getEdgeStyle(edge.type)
-        g.addEdge(source, target, { size: style.size, color: style.color, edgeType: edge.type })
+        g.addEdge(edge.source, edge.target, { size: style.size, color: style.color, edgeType: edge.type })
       } catch (_) {
         // skip duplicate edges
       }
@@ -162,6 +133,17 @@
         labelColor: { color: isDark ? '#f3f4f6' : '#111827' },
         allowInvalidContainer: true,
         nodeReducer: (node: string, data: any) => {
+          if (searchState.highlighted.size > 0) {
+            if (searchState.highlighted.has(node)) {
+              return { ...data, forceLabel: true, size: data.size * 1.4, zIndex: 10 }
+            }
+            // 1-hop neighbors of highlighted nodes: shown as small dim context with labels
+            if (searchState.visible.has(node)) {
+              return { ...data, forceLabel: true, color: isDark ? '#374151' : '#d1d5db', size: data.size * 0.4 }
+            }
+            // Everything else: hidden
+            return { ...data, hidden: true }
+          }
           return { ...data, forceLabel: true }
         },
         edgeReducer: (edge: string, data: any) => {
@@ -169,53 +151,42 @@
           const target = graph.target(edge)
           const edgeType = data.edgeType || 'CONTAINS'
 
-          let baseOpacity = 1
-          let baseSize = data.size
-
-          // LOD-based edge emphasis
-          if (lod === 'functions') {
-            if (edgeType === 'CALLS') {
-              baseOpacity = 1
-              baseSize = data.size * 1.2
-            } else if (edgeType === 'IMPORTS') {
-              baseOpacity = 0.25
-              baseSize = data.size * 0.4
-            }
-          } else if (lod === 'files') {
-            if (edgeType === 'IMPORTS') {
-              baseOpacity = 1
-              baseSize = data.size * 1.2
-            } else if (edgeType === 'CALLS') {
-              baseOpacity = 0.15
-              baseSize = data.size * 0.2
-            }
-          }
-
+          // Hover takes top priority
           if (hoverState.key) {
             if (source === hoverState.key || target === hoverState.key) {
-              return {
-                ...data,
-                color: data.color,
-                size: baseSize * 2,
-                zIndex: 100,
-                opacity: 1
-              }
-            } else {
-              return {
-                ...data,
-                color: isDark ? '#2d3748' : '#e5e7eb',
-                size: baseSize * 0.3,
-                zIndex: 0,
-                opacity: 0.15
-              }
+              return { ...data, size: data.size * 2, zIndex: 100, opacity: 1 }
             }
+            return { ...data, color: isDark ? '#2d3748' : '#e5e7eb', size: data.size * 0.3, zIndex: 0, opacity: 0.15 }
           }
 
-          return {
-            ...data,
-            size: baseSize,
-            opacity: baseOpacity
+          // Search:
+          // - both endpoints highlighted → boldest (thicker)
+          // - one endpoint highlighted, other is neighbor → bright (original color, normal size)
+          // - both endpoints neighbors (no highlight) → hidden
+          if (searchState.highlighted.size > 0) {
+            const sH = searchState.highlighted.has(source)
+            const tH = searchState.highlighted.has(target)
+            if (sH && tH) {
+              return { ...data, size: data.size * 1.5, zIndex: 10, opacity: 1 }
+            }
+            if (sH || tH) {
+              return { ...data, size: data.size * 1.1, zIndex: 5, opacity: 1 }
+            }
+            return { ...data, hidden: true }
           }
+
+          // LOD-based edge emphasis
+          let baseOpacity = 1
+          let baseSize = data.size
+          if (lod === 'functions') {
+            if (edgeType === 'CALLS') { baseSize = data.size * 1.2 }
+            else if (edgeType === 'IMPORTS') { baseOpacity = 0.25; baseSize = data.size * 0.4 }
+          } else if (lod === 'files') {
+            if (edgeType === 'IMPORTS') { baseSize = data.size * 1.2 }
+            else if (edgeType === 'CALLS') { baseOpacity = 0.15; baseSize = data.size * 0.2 }
+          }
+
+          return { ...data, size: baseSize, opacity: baseOpacity }
         },
         labelRenderer: (context: CanvasRenderingContext2D, data: any, settings: any) => {
           if (!data.label) return
@@ -239,7 +210,10 @@
 
       initialCameraState = { ...sigma.getCamera().getState() }
 
-      sigma.on('clickNode', ({ node }: any) => dispatch('selectNode', node))
+      sigma.on('clickNode', ({ node }: any) => {
+        if (node === 'src:folder') return
+        dispatch('selectNode', node)
+      })
       sigma.on('enterNode', ({ node }: any) => {
         hoverState.key = node
         sigma.refresh()
@@ -271,6 +245,21 @@
 
   $: if (sigma && initialCameraState && resetCameraFlag > 0) {
     sigma.getCamera().animate(initialCameraState, { duration: 300 })
+  }
+
+  $: if (sigma) {
+    searchState.highlighted = highlightedNodes
+    // Compute 1-hop neighbors so they can be shown as dim context around highlights
+    const visible = new Set<string>(highlightedNodes)
+    if (highlightedNodes.size > 0) {
+      const graph = sigma.getGraph()
+      for (const nodeId of highlightedNodes) {
+        if (!graph.hasNode(nodeId)) continue
+        graph.forEachNeighbor(nodeId, (n: string) => visible.add(n))
+      }
+    }
+    searchState.visible = visible
+    sigma.refresh()
   }
 </script>
 

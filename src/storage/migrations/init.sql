@@ -40,3 +40,13 @@ CREATE TABLE IF NOT EXISTS cache_records (
 CREATE INDEX IF NOT EXISTS idx_cache_records_hash ON cache_records(hash);
 CREATE INDEX IF NOT EXISTS idx_cache_records_node_id ON cache_records(node_id);
 CREATE INDEX IF NOT EXISTS idx_cache_records_parsed_at ON cache_records(parsed_at);
+
+-- Node embeddings for semantic search
+CREATE TABLE IF NOT EXISTS embeddings (
+  node_id     TEXT PRIMARY KEY,
+  model       TEXT NOT NULL,
+  vector      TEXT NOT NULL,
+  indexed_at  DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);

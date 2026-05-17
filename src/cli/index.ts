@@ -11,11 +11,9 @@ import { parseFile } from '../parser/treeSitter'
 import { extractPatterns } from '../parser/astGrep'
 import { Neo4jDB } from '../storage/neo4j'
 import { SQLiteDB } from '../storage/sqlite'
-import { QueryEngine } from '../query/queryEngine'
 import { FileWatcher } from './watcher'
 import { makeNodeId, makeEdgeId } from '../../shared/types'
 import type {
-  GraphNode,
   ProjectNode,
   ModuleNode,
   FolderNode,
@@ -23,6 +21,8 @@ import type {
   FunctionNode,
   CLISummary
 } from '../../shared/types'
+import { SQLiteVectorStore } from '../ai/sqliteVectorStore'
+import { embedNode, ensureModel, isOllamaReady } from '../ai/embedder'
 
 dotenv.config()
 
@@ -98,6 +98,8 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     spinner.succeed(
       chalk.green(`✓ Scanned ${scanResult.totalFiles} files in ${scanResult.modules.length} modules`)
     )
+    console.log('[scan debug] rootFiles:', scanResult.rootFiles.length, scanResult.rootFiles.map(f => f.path))
+    console.log('[scan debug] modules:', scanResult.modules.map(m => ({ name: m.name, files: m.files.length })))
 
     // Parse files and store in Neo4j
     spinner = ora('Parsing files...').start()
@@ -145,6 +147,12 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
       }
     }
     spinner.succeed(chalk.green(`✓ Parsed ${parsedCount} files, found ${functionCount} functions`))
+    console.log('[parse debug] parsedCache size:', parsedCache.size)
+    console.log('[parse debug] parsedCache keys:', [...parsedCache.keys()])
+    const sample = [...parsedCache.values()][0]
+    console.log('[parse debug] sample parsed file:', sample)
+    console.log('[parse debug] sample functions:', sample?.functions?.length)
+    console.log('[BEFORE NODE CREATION] parsedCache size:', parsedCache.size, 'first 3 keys:', [...parsedCache.keys()].slice(0, 3))
 
     // Store graph in Neo4j
     spinner = ora('Building graph in Neo4j...').start()
@@ -173,14 +181,15 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
     await neo4j.createNode(projectNode)
     nodeCount++
 
-    // Registry used for the IMPORTS second pass
+    // Registries used for second passes (IMPORTS + CALLS)
     const fileRegistry: Array<{ filePath: string; fileId: string; importSources: string[] }> = []
+    const functionRegistry: Array<{ fileId: string; fnId: string; fnName: string; calls: Array<{ name: string; lineNumber?: number }> }> = []
 
     // Create file nodes for files directly in scanRoot (e.g. src/index.js)
     for (const file of scanResult.rootFiles) {
       const fileId = makeNodeId(file.path, 'file')
-      const parsed = parsedCache.get(file.path) ?? null
-      fileRegistry.push({ filePath: file.path, fileId, importSources: parsedCache.get(file.path)?.imports.map(i => i.source) ?? [] })
+      const parsed = parsedCache.get(file.path)
+      fileRegistry.push({ filePath: file.path, fileId, importSources: parsed?.imports.map(i => i.source) ?? [] })
       const fileNode: FileNode = {
         id: fileId,
         type: 'file',
@@ -216,8 +225,38 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
       edgeCount++
     }
 
+    // Create src folder node — bridges project→modules in the graph and is searchable
+    const srcFolderId = makeNodeId('src', 'folder')
+    const srcFolderNode: FolderNode = {
+      id: srcFolderId,
+      type: 'folder',
+      level: 3,
+      label: 'src',
+      path: 'src',
+      hash: '',
+      visited: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      parentId: projectNode.id,
+      fileCount: 0
+    }
+    await neo4j.createNode(srcFolderNode)
+    await neo4j.createEdge({
+      id: makeEdgeId(projectNode.id, 'CONTAINS', srcFolderId),
+      source: projectNode.id,
+      target: srcFolderId,
+      type: 'CONTAINS',
+      label: 'contains',
+      weight: 1,
+      createdAt: new Date()
+    })
+    nodeCount++
+    edgeCount++
+
     // Create module, folder, and file nodes
+    console.log('[MODULES LOOP] About to process', scanResult.modules.length, 'modules')
     for (const module of scanResult.modules) {
+      console.log('[MODULE]', module.name, 'with', module.files.length, 'files and', module.folders.length, 'folders')
       const moduleId = makeNodeId(module.path, 'module')
       const moduleNode: ModuleNode = {
         id: moduleId,
@@ -229,18 +268,18 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
         visited: false,
         createdAt: new Date(),
         updatedAt: new Date(),
-        parentId: projectNode.id,
+        parentId: srcFolderId,
         folderCount: module.folders.length,
         fileCount: module.files.length
       }
       await neo4j.createNode(moduleNode)
       nodeCount++
 
-      // CONTAINS edge from project to module
-      const moduleEdgeId = makeEdgeId(projectNode.id, 'CONTAINS', moduleId)
+      // CONTAINS edge from src:folder to module
+      const moduleEdgeId = makeEdgeId(srcFolderId, 'CONTAINS', moduleId)
       await neo4j.createEdge({
         id: moduleEdgeId,
-        source: projectNode.id,
+        source: srcFolderId,
         target: moduleId,
         type: 'CONTAINS',
         label: 'contains',
@@ -250,7 +289,9 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
       edgeCount++
 
       // Process files and folders
+      console.log('[FOLDERS LOOP]', module.name, 'has', module.folders.length, 'folders')
       for (const folder of module.folders) {
+        console.log('[FOLDER]', folder.name, 'has', folder.files.length, 'files')
         const folderId = makeNodeId(folder.path, 'folder')
         const folderNode: FolderNode = {
           id: folderId,
@@ -282,10 +323,12 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
         edgeCount++
 
         // Create file nodes
+        console.log('[FOLDER FILES] folder', folder.name, 'has', folder.files.length, 'files')
         for (const file of folder.files) {
           const fileId = makeNodeId(file.path, 'file')
-          const parsed = parsedCache.get(file.path) ?? null
-          fileRegistry.push({ filePath: file.path, fileId, importSources: parsedCache.get(file.path)?.imports.map(i => i.source) ?? [] })
+          const parsed = parsedCache.get(file.path)
+          console.log('[FILE CHECK]', file.path, '— in cache:', !!parsed)
+          fileRegistry.push({ filePath: file.path, fileId, importSources: parsed?.imports.map(i => i.source) ?? [] })
           const fileNode: FileNode = {
             id: fileId,
             type: 'file',
@@ -321,9 +364,12 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
           })
           edgeCount++
 
-          // Create function nodes
-          if (parsed) {
+          // Create function nodes — deduplicate by name within each file
+          if (parsed && parsed.functions.length > 0) {
+            const seenFnNames = new Set<string>()
             for (const fn of parsed.functions) {
+              if (seenFnNames.has(fn.name)) continue
+              seenFnNames.add(fn.name)
               const fnId = makeNodeId(file.path, fn.name, fn.lineStart)
               const fnNode: FunctionNode = {
                 id: fnId,
@@ -361,26 +407,13 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
               })
               edgeCount++
 
-              // CALLS edges
-              for (const call of fn.calls) {
-                const targetId = makeNodeId(file.path, call.name)
-                try {
-                  const callEdgeId = makeEdgeId(fnId, 'CALLS', targetId)
-                  await neo4j.createEdge({
-                    id: callEdgeId,
-                    source: fnId,
-                    target: targetId,
-                    type: 'CALLS',
-                    label: 'calls',
-                    weight: 1,
-                    lineNumber: call.lineNumber,
-                    createdAt: new Date()
-                  })
-                  edgeCount++
-                } catch {
-                  // Target function might not exist yet
-                }
-              }
+              // Collect for CALLS second pass
+              functionRegistry.push({
+                fileId,
+                fnId,
+                fnName: fn.name,
+                calls: fn.calls
+              })
             }
           }
         }
@@ -425,6 +458,59 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
           createdAt: new Date()
         })
         edgeCount++
+
+        // Create function nodes — deduplicate by name within each file
+        if (parsed && parsed.functions.length > 0) {
+          const seenFnNames = new Set<string>()
+          for (const fn of parsed.functions) {
+            if (seenFnNames.has(fn.name)) continue
+            seenFnNames.add(fn.name)
+            const fnId = makeNodeId(file.path, fn.name, fn.lineStart)
+            const fnNode: FunctionNode = {
+              id: fnId,
+              type: 'function',
+              level: 5,
+              label: fn.name,
+              path: file.path,
+              hash: file.hash,
+              visited: false,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              parentId: fileId,
+              params: fn.params,
+              returnType: fn.returnType,
+              isAsync: fn.isAsync,
+              isExported: fn.isExported,
+              isMethod: fn.isMethod,
+              className: fn.className,
+              lineStart: fn.lineStart,
+              lineEnd: fn.lineEnd
+            }
+            await neo4j.createNode(fnNode)
+            nodeCount++
+
+            // CONTAINS edge from file to function
+            const fnEdgeId = makeEdgeId(fileId, 'CONTAINS', fnId)
+            await neo4j.createEdge({
+              id: fnEdgeId,
+              source: fileId,
+              target: fnId,
+              type: 'CONTAINS',
+              label: 'contains',
+              weight: 1,
+              createdAt: new Date()
+            })
+            edgeCount++
+
+            // Collect for CALLS second pass
+            functionRegistry.push({
+              fileId,
+              fnId,
+              fnName: fn.name,
+              calls: fn.calls
+            })
+          }
+        }
       }
     }
 
@@ -466,6 +552,74 @@ async function runScan(projectRoot: string, shouldWatch: boolean): Promise<void>
       }
     }
     spinner.succeed(chalk.green(`✓ Created ${importEdgeCount} import edges`))
+
+    // Third pass: create CALLS edges between function nodes
+    spinner = ora('Building call graph...').start()
+    let callEdgeCount = 0
+
+    // Build lookup: name → [fnId, ...] (global across all files)
+    const fnNameIndex = new Map<string, string[]>()
+    for (const { fnId, fnName } of functionRegistry) {
+      if (!fnNameIndex.has(fnName)) fnNameIndex.set(fnName, [])
+      fnNameIndex.get(fnName)!.push(fnId)
+    }
+
+    for (const { fnId: sourceId, fileId: sourceFileId, calls } of functionRegistry) {
+      for (const call of calls) {
+        const candidates = fnNameIndex.get(call.name) ?? []
+        // Prefer same-file candidates first (inner functions share names across files)
+        // sourceFileId = "src/parser/astGrep.ts:file" — strip ":file" to get the bare path prefix
+        const sourcePath = sourceFileId.split(':')[0]
+        const sameFileCandidates = candidates.filter(id => id.startsWith(sourcePath + ':'))
+        const sameFile = sameFileCandidates.filter(id => id !== sourceId)
+        const otherFile = candidates.filter(id => !id.startsWith(sourcePath + ':') && id !== sourceId)
+        // Only fall back to other files when there are NO same-file candidates at all.
+        // If same-file candidates exist but are all self, it's a recursive call —
+        // don't wire it to another file's function of the same name.
+        const targetId = sameFile[0] ?? (sameFileCandidates.length === 0 ? otherFile[0] : undefined)
+        if (targetId) {
+          try {
+            await neo4j.createEdge({
+              id: makeEdgeId(sourceId, 'CALLS', targetId),
+              source: sourceId,
+              target: targetId,
+              type: 'CALLS',
+              label: 'calls',
+              weight: 1,
+              ...(call.lineNumber && { lineNumber: call.lineNumber }),
+              createdAt: new Date()
+            })
+            callEdgeCount++
+          } catch { /* duplicate */ }
+        }
+      }
+    }
+    spinner.succeed(chalk.green(`✓ Created ${callEdgeCount} call edges`))
+
+    // Fourth pass: embed all file + function nodes for semantic search
+    const ollamaReady = await isOllamaReady()
+    if (ollamaReady) {
+      spinner = ora('Embedding nodes for semantic search...').start()
+      const vectorStore = new SQLiteVectorStore(sqlite.getDb())
+      await ensureModel()
+
+      const nodesToEmbed = await neo4j.getNodesByType('file')
+        .then(files => neo4j.getNodesByType('function').then(fns => [...files, ...fns]))
+
+      let embedCount = 0
+      for (const node of nodesToEmbed) {
+        const already = await vectorStore.has(node.id)
+        if (already) continue
+        try {
+          const vector = await embedNode(node)
+          await vectorStore.upsert(node.id, process.env.EMBEDDING_MODEL || 'nomic-embed-text', vector)
+          embedCount++
+        } catch { /* skip node if embedding fails */ }
+      }
+      spinner.succeed(chalk.green(`✓ Embedded ${embedCount} nodes`))
+    } else {
+      console.log(chalk.yellow('⚠  Ollama not available — skipping embeddings. Start Ollama to enable semantic search.'))
+    }
 
     const duration = Date.now() - startTime
     const summary: CLISummary = {

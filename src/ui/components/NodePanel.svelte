@@ -137,7 +137,7 @@
             style="border-left-color: {getNodeTypeColor(item.type)}"
           >
             <span class="icon">{getNodeIcon(item.type)}</span>
-            <span class="name">{item.label}</span>
+            <span class="name">{item.label || item.id.split(':').slice(1, -1).join(':') || item.id}</span>
           </button>
         {/each}
         {#if calls.length === 0}
@@ -158,7 +158,7 @@
             style="border-left-color: {getNodeTypeColor(item.type)}"
           >
             <span class="icon">{getNodeIcon(item.type)}</span>
-            <span class="name">{item.label}</span>
+            <span class="name">{item.label || item.id.split(':').slice(1, -1).join(':') || item.id}</span>
           </button>
         {/each}
         {#if calledBy.length === 0}
@@ -179,7 +179,7 @@
             style="border-left-color: {getNodeTypeColor(item.type)}"
           >
             <span class="icon">{getNodeIcon(item.type)}</span>
-            <span class="name">{item.label}</span>
+            <span class="name">{item.label || item.id.split(':').slice(1, -1).join(':') || item.id}</span>
           </button>
         {/each}
         {#if imports.length === 0}
@@ -200,7 +200,7 @@
             style="border-left-color: {getNodeTypeColor(item.type)}"
           >
             <span class="icon">{getNodeIcon(item.type)}</span>
-            <span class="name">{item.label}</span>
+            <span class="name">{item.label || item.id.split(':').slice(1, -1).join(':') || item.id}</span>
           </button>
         {/each}
         {#if importedBy.length === 0}

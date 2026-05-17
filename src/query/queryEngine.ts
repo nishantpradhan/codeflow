@@ -112,6 +112,64 @@ export class QueryEngine {
     }
   }
 
+  async getFocusedSubgraph(nodeId: NodeId): Promise<QueryResult<SubGraph>> {
+    const startTime = Date.now()
+    const node = await this.neo4j.getNode(nodeId)
+    const type = node?.type ?? 'unknown'
+
+    let result: { nodes: GraphNode[]; edges: GraphEdge[] }
+
+    if (type === 'function') {
+      result = await this.neo4j.getSubgraph(nodeId, 1)
+      result = {
+        nodes: result.nodes,
+        // CALLS edges (what this function calls) + the parent CONTAINS edge (which file owns it)
+        edges: result.edges.filter(e => e.type === 'CALLS' || (e.type === 'CONTAINS' && e.target === nodeId))
+      }
+    } else if (type === 'file') {
+      result = await this.neo4j.getSubgraph(nodeId, 1)
+      result = {
+        nodes: result.nodes,
+        edges: result.edges.filter(e => e.type === 'IMPORTS' || (e.type === 'CONTAINS' && e.target === nodeId))
+      }
+    } else {
+      result = await this.neo4j.getSubgraph(nodeId, 1)
+      result = {
+        nodes: result.nodes,
+        edges: result.edges.filter(e => e.type === 'CONTAINS')
+      }
+    }
+
+    // Drop nodes that are not connected by any remaining edge (orphans after edge filtering)
+    const connectedIds = new Set<string>([nodeId])
+    for (const e of result.edges) {
+      connectedIds.add(e.source)
+      connectedIds.add(e.target)
+    }
+    result = {
+      nodes: result.nodes.filter(n => connectedIds.has(n.id)),
+      edges: result.edges
+    }
+
+    const MAX_NODES = 30
+    if (result.nodes.length > MAX_NODES) {
+      const keepIds = new Set([nodeId, ...result.nodes.slice(0, MAX_NODES).map(n => n.id)])
+      result = {
+        nodes: result.nodes.filter(n => keepIds.has(n.id)),
+        edges: result.edges.filter(e => keepIds.has(e.source) && keepIds.has(e.target))
+      }
+    }
+
+    const subgraph: SubGraph = {
+      nodes: result.nodes,
+      edges: result.edges,
+      rootId: nodeId,
+      depth: 1
+    }
+
+    return { data: subgraph, fromCache: false, durationMs: Date.now() - startTime }
+  }
+
   async getNodeRelations(
     nodeId: NodeId
   ): Promise<{

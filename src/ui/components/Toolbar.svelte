@@ -47,7 +47,8 @@
     </button>
   </div>
 
-  <div class="tool-group">
+  <div class="tool-group lod-group">
+    <span class="lod-label">View:</span>
     {#each ['modules', 'files', 'functions'] as lod}
       <button
         class="lod-btn"
